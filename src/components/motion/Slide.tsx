@@ -15,8 +15,7 @@
  */
 
 import React from 'react';
-import type { SlideDirection } from '../../types/scene';
-import { CANVAS } from '../../utils/timing';
+import type { SlideDirection, VideoConfig } from '../../types/scene';
 import { BLUR_GAIN } from '../../utils/motionBlur';
 import {
   ENTER,
@@ -26,20 +25,22 @@ import {
   type MotionProps,
 } from './primitives';
 
-const THROW_Y = CANVAS.height * 0.068;
-const THROW_X = CANVAS.width * 0.42;
-
-const offsetFor = (direction: SlideDirection): { x: number; y: number } => {
+const offsetFor = (
+  direction: SlideDirection,
+  canvas: VideoConfig,
+): { x: number; y: number } => {
+  const throwY = canvas.height * 0.068;
+  const throwX = canvas.width * 0.42;
   switch (direction) {
     case 'left':
-      return { x: -THROW_X, y: 0 };
+      return { x: -throwX, y: 0 };
     case 'right':
-      return { x: THROW_X, y: 0 };
+      return { x: throwX, y: 0 };
     case 'top':
-      return { x: 0, y: -THROW_Y };
+      return { x: 0, y: -throwY };
     case 'bottom':
     default:
-      return { x: 0, y: THROW_Y };
+      return { x: 0, y: throwY };
   }
 };
 
@@ -51,9 +52,10 @@ export const Slide: React.FC<MotionProps> = ({
   color,
   visual,
   transition,
+  canvas,
 }) => {
   const direction = plan.scene.direction ?? 'bottom';
-  const { x, y } = offsetFor(direction);
+  const { x, y } = offsetFor(direction, canvas);
   const horizontal = direction === 'left' || direction === 'right';
   const transformFrames = framesFor(
     ENTER.transform * (horizontal ? 1.1 : 0.95),

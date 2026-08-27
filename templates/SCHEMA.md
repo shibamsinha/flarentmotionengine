@@ -385,3 +385,27 @@ Rules:
   compositions, and designing each frame so it works paused.
 - Return JSON only, no prose.
 ```
+
+---
+
+# V5 — landscape
+
+The reel's frame shape is a project-level choice, the same tier as the
+palette — never per-scene.
+
+```json
+{
+  "format": "LANDSCAPE",
+  "scenes": [ ... ]
+}
+```
+
+`format` accepts `PORTRAIT` / `LANDSCAPE`, or the synonyms `VERTICAL`/`9:16`
+and `HORIZONTAL`/`WIDE`/`16:9`. Omit it and the document's own `width`/`height`
+are used to infer it — `1920x1080` is read as landscape without needing the
+field spelled out. Omit both and the reel renders portrait, as it always has.
+
+Landscape is not portrait cropped or letterboxed — the whole type system
+replans against the new frame's own 1920×1080 proportions, so margins, the
+type scale, composition spacing and every semantic size and position resolve
+correctly for the wider frame rather than being stretched onto it.

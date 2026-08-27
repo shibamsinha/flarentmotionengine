@@ -22,7 +22,7 @@
  * new home rather than blinking it out and back.
  */
 
-import type { AnimationStyle } from '../types/scene';
+import type { AnimationStyle, VideoConfig } from '../types/scene';
 import type { BlockLayout, PlannedWord, ScenePlan } from './plan';
 import type { ExitSpec } from '../components/motion/primitives';
 import { CANVAS } from './timing';
@@ -102,6 +102,7 @@ export const exitSpecFor = (
   style: AnimationStyle,
   frames: number,
   fieldChanges = false,
+  canvas: VideoConfig = CANVAS,
 ): Omit<ExitSpec, 'start'> => {
   const ease = EXIT_EASE[style];
   // Across a cut the word has to clear the frame in a couple of frames, so the
@@ -110,13 +111,13 @@ export const exitSpecFor = (
   switch (style) {
     case 'massive':
       // Already enormous — push it past the frame instead of shrinking it away.
-      return { frames, toScale: 1.42, toY: -CANVAS.height * 0.045, ease, fadeEase };
+      return { frames, toScale: 1.42, toY: -canvas.height * 0.045, ease, fadeEase };
     case 'slide':
       // Far enough that the word is unambiguously gone rather than
       // lingering as a blurred stub at the frame edge.
-      return { frames, toX: -CANVAS.width * 0.62, toScale: 0.97, ease, fadeEase };
+      return { frames, toX: -canvas.width * 0.62, toScale: 0.97, ease, fadeEase };
     case 'stack':
-      return { frames, toY: -CANVAS.height * 0.08, toScale: 0.94, ease, fadeEase };
+      return { frames, toY: -canvas.height * 0.08, toScale: 0.94, ease, fadeEase };
     case 'rapid':
       return { frames, toScale: 1.06, ease, fadeEase };
     case 'punch':
@@ -124,7 +125,7 @@ export const exitSpecFor = (
       // Reads as the word being pushed back out of the frame it punched into.
       // The lift matters: a PUNCH exit that only scales leaves the outgoing
       // hero sitting exactly where the incoming one lands.
-      return { frames, toScale: 1.12, toY: -CANVAS.height * 0.075, ease, fadeEase };
+      return { frames, toScale: 1.12, toY: -canvas.height * 0.075, ease, fadeEase };
   }
 };
 
@@ -215,6 +216,7 @@ export const planTransition = (
    * for a smear that sells the movement, not enough to look like a ghost.
    */
   fieldChanges = false,
+  canvas: VideoConfig = CANVAS,
 ): SceneTransition => {
   if (!from) return NO_TRANSITION;
 
@@ -263,7 +265,7 @@ export const planTransition = (
   // Come from the opposite side of wherever the outgoing type is headed, at a
   // fraction of the distance — enough to separate the two, not so much that the
   // incoming word reads as a second slide.
-  const exit = exitSpecFor(from.style, frames, fieldChanges);
+  const exit = exitSpecFor(from.style, frames, fieldChanges, canvas);
   const cross = {
     x: -(exit.toX ?? 0) * CROSS_RATIO,
     y: -(exit.toY ?? 0) * CROSS_RATIO,

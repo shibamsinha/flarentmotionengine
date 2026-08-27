@@ -1,9 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import type { OverlayImage, PaletteName, Scene } from './types/scene';
+import type { CanvasFormat, OverlayImage, PaletteName, Scene } from './types/scene';
 import { blankScene, defaultScenes, makeSceneId } from './data/defaultScenes';
 import { PRESETS } from './data/presets';
-import { CANVAS, buildTimeline, totalFrames } from './utils/timing';
+import {
+  CANVAS,
+  DEFAULT_FORMAT,
+  FORMAT_LABEL,
+  buildTimeline,
+  canvasFor,
+  totalFrames,
+} from './utils/timing';
 import {
   DEFAULT_PALETTE,
   FIELDS,
@@ -41,6 +48,13 @@ export const App: React.FC = () => {
   const [palette, setPalette] = useState<PaletteName>(
     restored?.palette ?? DEFAULT_PALETTE,
   );
+  /**
+   * The project's frame. Chosen once, the same tier as the palette — not a
+   * per-scene setting, which is why it lives here rather than on `Scene`.
+   */
+  const [format, setFormat] = useState<CanvasFormat>(
+    restored?.format ?? DEFAULT_FORMAT,
+  );
   const [fields, setFields] = useState<FieldOverrides>(restored?.fields ?? {});
   const [title, setTitle] = useState<string | null>(restored?.title ?? null);
   const [overlay, setOverlay] = useState<OverlayImage | null>(
@@ -64,6 +78,11 @@ export const App: React.FC = () => {
   const selected = scenes.find((scene) => scene.id === selectedId) ?? null;
   const frames = totalFrames(scenes, CANVAS.fps);
   const seconds = frames / CANVAS.fps;
+  // Portrait unless the project chose landscape. Fed to every editor overlay
+  // that draws on top of the player — the boxes in BoxStage, ImageStage and
+  // OverlayStage are plain divs outside the Remotion tree, so unlike the
+  // renderer they cannot read the frame back from `useVideoConfig`.
+  const canvas = useMemo(() => canvasFor(format), [format]);
 
   /**
    * The picture handles only make sense when the scene owning them is the one
@@ -87,7 +106,7 @@ export const App: React.FC = () => {
    */
   useEffect(() => {
     setSaved(false);
-    const snapshot = { scenes, palette, fields, overlay, title, selectedId };
+    const snapshot = { scenes, palette, format, fields, overlay, title, selectedId };
     const timer = window.setTimeout(() => {
       setSaved(saveProject(snapshot));
     }, 400);
@@ -102,7 +121,7 @@ export const App: React.FC = () => {
       window.removeEventListener('visibilitychange', flush);
       window.removeEventListener('pagehide', flush);
     };
-  }, [scenes, palette, fields, overlay, title, selectedId]);
+  }, [scenes, palette, format, fields, overlay, title, selectedId]);
 
   // Escape is the other half of clicking away — reachable when the object
   // fills the frame and there is no empty canvas left to click.
@@ -218,6 +237,7 @@ export const App: React.FC = () => {
     const next = defaultScenes();
     setScenes(next);
     setPalette(DEFAULT_PALETTE);
+    setFormat(DEFAULT_FORMAT);
     setFields({});
     setOverlay(null);
     setTitle(null);
@@ -247,6 +267,7 @@ export const App: React.FC = () => {
     (project: ImportedProject) => {
       setScenes(project.scenes);
       setPalette(project.palette);
+      setFormat(project.format);
       setFields(project.fields);
       setOverlay(project.overlay);
       setTitle(project.title);
@@ -316,6 +337,24 @@ export const App: React.FC = () => {
             </option>
           ))}
         </select>
+        <div className="palette-switch" role="group" aria-label="Format">
+          {(['portrait', 'landscape'] as CanvasFormat[]).map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={`palette-chip${name === format ? ' is-on' : ''}`}
+              onClick={() => setFormat(name)}
+              title={`Render this reel as ${FORMAT_LABEL[name]}`}
+            >
+              <span
+                className="format-glyph"
+                data-orientation={name}
+                aria-hidden
+              />
+              {name === 'portrait' ? '9:16' : '16:9'}
+            </button>
+          ))}
+        </div>
         <div className="palette-switch" role="group" aria-label="Palette">
           {PALETTE_NAMES.map((name) => (
             <button
@@ -344,16 +383,28 @@ export const App: React.FC = () => {
           <span>
             <b>{meta.frames}</b> frames
           </span>
-          <span>1080×1920 · {CANVAS.fps}fps</span>
+          <span>
+            {canvas.width}×{canvas.height} · {CANVAS.fps}fps
+          </span>
         </div>
       </header>
 
       <div className="stage">
         <div className="canvas-pane">
-          <div className="canvas-holder">
+          {/*
+            The CSS default is portrait (9/16); landscape overrides it inline
+            rather than via a class, so the shape a viewer sees always matches
+            `canvas` exactly — including for any future format this ever grows
+            beyond a fixed two-way switch.
+          */}
+          <div
+            className="canvas-holder"
+            style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}
+          >
             <VideoPreview
               scenes={scenes}
               palette={palette}
+              format={format}
               fields={fields}
               overlay={overlay}
               playerRef={playerRef}
@@ -369,6 +420,7 @@ export const App: React.FC = () => {
             />
             <ImageStage
               scene={selected}
+              canvas={canvas}
               active={!playing && selectedIsOnScreen}
               selected={canvasTarget === 'image'}
               onSelect={() => setCanvasTarget('image')}
@@ -381,6 +433,7 @@ export const App: React.FC = () => {
             <OverlayStage
               overlay={overlay}
               scenes={scenes}
+              canvas={canvas}
               frame={frame}
               active={!playing}
               selected={canvasTarget === 'overlay'}
@@ -407,6 +460,7 @@ export const App: React.FC = () => {
             palette={palette}
             hasOverlay={overlay !== null}
             onChange={updateScene}
+            canvas={canvas}
           />
           <OverlayControls
             overlay={overlay}
@@ -469,6 +523,7 @@ export const App: React.FC = () => {
           <ExportBar
             scenes={scenes}
             palette={palette}
+            format={format}
             fields={fields}
             overlay={overlay}
             saved={saved}
@@ -480,6 +535,7 @@ export const App: React.FC = () => {
         open={extractOpen}
         scenes={scenes}
         title={title}
+        format={format}
         fields={fields}
         overlay={overlay}
         onClose={() => setExtractOpen(false)}

@@ -7,6 +7,7 @@ import type {
   Scene,
   SlideDirection,
   TextCase,
+  VideoConfig,
 } from '../../types/scene';
 import { ImageControls } from './ImageControls';
 import { ElementEditor, seedElements } from './ElementEditor';
@@ -69,7 +70,9 @@ export const SceneEditor: React.FC<{
   /** Whether the project has a static overlay to opt out of. */
   hasOverlay: boolean;
   onChange: (patch: Partial<Scene>) => void;
-}> = ({ scene, palette, hasOverlay, onChange }) => {
+  /** The project's frame. Portrait unless the project chose landscape. */
+  canvas?: VideoConfig;
+}> = ({ scene, palette, hasOverlay, onChange, canvas }) => {
   if (!scene) {
     return (
       <div className="section">
@@ -349,7 +352,7 @@ export const SceneEditor: React.FC<{
           </div>
         ) : null}
 
-        <ImageControls scene={scene} onChange={onChange} />
+        <ImageControls scene={scene} onChange={onChange} canvas={canvas} />
       </div>
     </div>
   );

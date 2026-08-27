@@ -300,10 +300,19 @@ export type VideoConfig = {
   fps: number;
 };
 
+/**
+ * A project's frame shape. Picked once per project, the same tier as the
+ * palette — never per-scene, and never a raw width/height, so the whole
+ * engine can reason about "the frame" without asking which orientation.
+ */
+export type CanvasFormat = 'portrait' | 'landscape';
+
 /** Everything the Remotion composition needs. Serialisable — it crosses the
  *  process boundary to the render server as inputProps. */
 export type FlarentVideoProps = {
   scenes: Scene[];
+  /** Defaults to 'portrait' (1080×1920) when absent. */
+  format?: CanvasFormat;
   /** Defaults to 'forest' (green · cream) when absent. */
   palette?: PaletteName;
   /** Per-project field colours, e.g. an imported script's backgroundPalette. */

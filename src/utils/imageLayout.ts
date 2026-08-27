@@ -8,9 +8,9 @@
  * words keep their contrast without a generic dark gradient.
  */
 
-import type { SceneImage } from '../types/scene';
+import type { SceneImage, VideoConfig } from '../types/scene';
 import { CANVAS } from './timing';
-import { SIDE_MARGIN } from './typography';
+import { sideMargin } from './typography';
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
@@ -34,9 +34,6 @@ const clamp = (value: number, min: number, max: number): number =>
 const finite = (value: number | undefined, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
-/** Air between the picture band and the type band. */
-const BAND_GAP = SIDE_MARGIN * 0.85;
-
 export const PANEL_MIN = 0.18;
 export const PANEL_MAX = 0.72;
 
@@ -50,15 +47,22 @@ export const FREE_MIN = 0.05;
  */
 export const freeBoxFrom = (
   composition: ImageComposition,
+  canvas: VideoConfig = CANVAS,
 ): { x: number; y: number; width: number; height: number } => ({
-  x: composition.rect.x / CANVAS.width,
-  y: composition.rect.y / CANVAS.height,
-  width: composition.rect.width / CANVAS.width,
-  height: composition.rect.height / CANVAS.height,
+  x: composition.rect.x / canvas.width,
+  y: composition.rect.y / canvas.height,
+  width: composition.rect.width / canvas.width,
+  height: composition.rect.height / canvas.height,
 });
 
-export const composeImage = (image: SceneImage | undefined): ImageComposition => {
-  const { width: W, height: H } = CANVAS;
+export const composeImage = (
+  image: SceneImage | undefined,
+  canvas: VideoConfig = CANVAS,
+): ImageComposition => {
+  const { width: W, height: H } = canvas;
+  const margin = sideMargin(canvas);
+  /** Air between the picture band and the type band. */
+  const bandGap = margin * 0.85;
 
   const full: ImageComposition = {
     rect: { x: 0, y: 0, width: W, height: H },
@@ -109,8 +113,8 @@ export const composeImage = (image: SceneImage | undefined): ImageComposition =>
     const y = side === 'top' ? 0 : H - height;
     return {
       rect: { x: 0, y, width: W, height },
-      typeTop: side === 'top' ? height + BAND_GAP : SIDE_MARGIN,
-      typeBottom: side === 'top' ? H - SIDE_MARGIN : y - BAND_GAP,
+      typeTop: side === 'top' ? height + bandGap : margin,
+      typeBottom: side === 'top' ? H - margin : y - bandGap,
       scrim: clamp(finite(image.scrim, 0), 0, 0.95),
       focusX,
       focusY,
@@ -120,11 +124,11 @@ export const composeImage = (image: SceneImage | undefined): ImageComposition =>
 
   // panel — an inset plate on the safe margin.
   const height = H * clamp(finite(image.size, 0.42), PANEL_MIN, PANEL_MAX);
-  const y = side === 'top' ? SIDE_MARGIN : H - SIDE_MARGIN - height;
+  const y = side === 'top' ? margin : H - margin - height;
   return {
-    rect: { x: SIDE_MARGIN, y, width: W - SIDE_MARGIN * 2, height },
-    typeTop: side === 'top' ? y + height + BAND_GAP : SIDE_MARGIN,
-    typeBottom: side === 'top' ? H - SIDE_MARGIN : y - BAND_GAP,
+    rect: { x: margin, y, width: W - margin * 2, height },
+    typeTop: side === 'top' ? y + height + bandGap : margin,
+    typeBottom: side === 'top' ? H - margin : y - bandGap,
     scrim: clamp(finite(image.scrim, 0), 0, 0.95),
     focusX,
     focusY,

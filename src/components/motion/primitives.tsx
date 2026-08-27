@@ -598,6 +598,13 @@ export type MotionProps = {
    * are being carried across it. Absent on the first scene.
    */
   transition?: SceneTransition;
+  /**
+   * The project's frame. Styles whose throw is expressed as a fraction of
+   * frame width/height (SLIDE's travel, MASSIVE's drift) read this instead of
+   * the portrait default, so landscape gets its own proportionate throw rather
+   * than portrait's numbers stretched onto a wider frame.
+   */
+  canvas: import('../../types/scene').VideoConfig;
 };
 
 export const framesFor = (seconds: number, fps: number): number =>

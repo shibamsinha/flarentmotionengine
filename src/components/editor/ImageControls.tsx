@@ -15,6 +15,7 @@ import {
   freeBoxFrom,
 } from '../../utils/imageLayout';
 import { CANVAS } from '../../utils/timing';
+import type { VideoConfig } from '../../types/scene';
 import { resolveImageSrc } from '../motion/SceneImageLayer';
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/gif';
@@ -58,7 +59,9 @@ const NumberField: React.FC<{
 export const ImageControls: React.FC<{
   scene: Scene;
   onChange: (patch: Partial<Scene>) => void;
-}> = ({ scene, onChange }) => {
+  /** The project's frame. Portrait unless the project chose landscape. */
+  canvas?: VideoConfig;
+}> = ({ scene, onChange, canvas = CANVAS }) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,10 +85,10 @@ export const ImageControls: React.FC<{
         patchImage({ placement });
         return;
       }
-      const seeded = freeBoxFrom(composeImage(scene.image));
+      const seeded = freeBoxFrom(composeImage(scene.image, canvas), canvas);
       patchImage({ placement, ...seeded });
     },
-    [scene.image, patchImage],
+    [scene.image, patchImage, canvas],
   );
 
   const upload = useCallback(
@@ -148,7 +151,7 @@ export const ImageControls: React.FC<{
 
   const placement = image?.placement ?? 'full';
   const note = PLACEMENTS.find((p) => p.value === placement)?.note;
-  const box = image ? freeBoxFrom(composeImage(image)) : null;
+  const box = image ? freeBoxFrom(composeImage(image, canvas), canvas) : null;
 
   /** Reset the box to the picture's own aspect at a comfortable width. */
   const fitToAspect = useCallback(() => {
@@ -158,7 +161,7 @@ export const ImageControls: React.FC<{
         ? image.naturalWidth / image.naturalHeight
         : 1;
     const width = 0.7;
-    const height = (width * CANVAS.width) / aspect / CANVAS.height;
+    const height = (width * canvas.width) / aspect / canvas.height;
     patchImage({
       placement: 'free',
       width,
@@ -166,7 +169,7 @@ export const ImageControls: React.FC<{
       x: (1 - width) / 2,
       y: (1 - height) / 2,
     });
-  }, [image, box, patchImage]);
+  }, [image, box, patchImage, canvas]);
 
   return (
     <div className="field">

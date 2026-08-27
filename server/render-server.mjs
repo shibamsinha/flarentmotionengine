@@ -5,7 +5,7 @@
  * list here and this process drives @remotion/renderer. Jobs are tracked so the
  * UI can show real progress rather than a spinner.
  *
- *   POST /api/render        { scenes, palette, fields, overlay } -> { jobId }
+ *   POST /api/render        { scenes, palette, format, fields, overlay } -> { jobId }
  *   GET  /api/render/:id               -> { status, progress, url, ... }
  *   GET  /out/<file>                   -> the finished MP4
  */
@@ -113,7 +113,7 @@ const slug = (scenes) => {
   return words || 'flarent';
 };
 
-const runJob = async (jobId, scenes, palette, fields, overlay) => {
+const runJob = async (jobId, scenes, palette, fields, overlay, format) => {
   const started = Date.now();
   const set = (patch) => jobs.set(jobId, { ...jobs.get(jobId), ...patch });
 
@@ -129,7 +129,18 @@ const runJob = async (jobId, scenes, palette, fields, overlay) => {
     set({ status: 'bundling', progress: 0 });
     const serveUrl = await getBundle((progress) => set({ progress }));
 
-    const inputProps = { scenes, palette, fields, ...(overlay ? { overlay } : {}) };
+    // `format` drives `calculateFlarentMetadata` inside the bundle, which is
+    // what actually decides the render's width/height — omitted entirely
+    // rather than sent as 'portrait', so a caller that never heard of formats
+    // (an older script, a saved curl command) keeps getting exactly what it
+    // always got.
+    const inputProps = {
+      scenes,
+      palette,
+      fields,
+      ...(overlay ? { overlay } : {}),
+      ...(format === 'landscape' ? { format } : {}),
+    };
 
     set({ status: 'rendering', progress: 0 });
     const composition = await selectComposition({
@@ -228,6 +239,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: 'No scenes supplied' });
       }
       const palette = body?.palette === 'ink' ? 'ink' : 'forest';
+      const format = body?.format === 'landscape' ? 'landscape' : 'portrait';
       // Only well-formed hex values reach the composition.
       const fields = {};
       if (body?.fields && typeof body.fields === 'object') {
@@ -266,7 +278,7 @@ const server = http.createServer(async (req, res) => {
       const jobId = randomUUID();
       jobs.set(jobId, { status: 'starting', progress: 0 });
       // Fire and forget — the client polls for progress.
-      void runJob(jobId, scenes, palette, fields, overlay);
+      void runJob(jobId, scenes, palette, fields, overlay, format);
       return json(res, 202, { jobId });
     } catch (error) {
       return json(res, 400, { error: String(error) });

@@ -12,7 +12,6 @@
  */
 
 import React from 'react';
-import { CANVAS } from '../../utils/timing';
 import { EASE, clamp01 } from '../../utils/easing';
 import { BLUR_GAIN } from '../../utils/motionBlur';
 import {
@@ -32,6 +31,7 @@ export const Massive: React.FC<MotionProps> = ({
   color,
   visual,
   transition,
+  canvas,
 }) => {
   const transformFrames = framesFor(ENTER.transform * 1.35, fps);
   const blurFrames = framesFor(ENTER.blur, fps);
@@ -45,7 +45,7 @@ export const Massive: React.FC<MotionProps> = ({
   const block = (f: number) => {
     const entrance = enterValues(f, {
       fromScale: 0.34,
-      fromY: CANVAS.height * 0.025,
+      fromY: canvas.height * 0.025,
       blur: 5,
       transformFrames,
       opacityFrames,
@@ -74,7 +74,7 @@ export const Massive: React.FC<MotionProps> = ({
             start: word.start,
             fromScale: word.role === 'hero' ? 0.34 : 1,
             fromY:
-              word.role === 'hero' ? CANVAS.height * 0.025 : word.fontSize * 0.35,
+              word.role === 'hero' ? canvas.height * 0.025 : word.fontSize * 0.35,
             transformFrames,
             opacityFrames,
             blurFrames,

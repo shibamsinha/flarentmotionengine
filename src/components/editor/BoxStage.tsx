@@ -14,6 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { VideoConfig } from '../../types/scene';
 import { CANVAS } from '../../utils/timing';
 
 export type Box = { x: number; y: number; width: number; height: number };
@@ -66,7 +67,19 @@ export const BoxStage: React.FC<{
   variant?: 'image' | 'overlay';
   /** Shown while dragging. Defaults to the box size in composition pixels. */
   readout?: (box: Box) => string;
-}> = ({ rect, min, onChange, selected, onSelect, onGrab, variant = 'image', readout }) => {
+  /** The project's frame. Portrait unless the project chose landscape. */
+  canvas?: VideoConfig;
+}> = ({
+  rect,
+  min,
+  onChange,
+  selected,
+  onSelect,
+  onGrab,
+  variant = 'image',
+  readout,
+  canvas = CANVAS,
+}) => {
   // A callback ref, not useRef: the host mounts when the thing being edited is
   // attached, which is not a prop change, so an effect keyed on props would
   // never re-run and the scale would stay zero.
@@ -79,7 +92,7 @@ export const BoxStage: React.FC<{
   // which is stretched over the player.
   useEffect(() => {
     if (!host) return;
-    const measure = () => setScale(host.getBoundingClientRect().width / CANVAS.width);
+    const measure = () => setScale(host.getBoundingClientRect().width / canvas.width);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(host);
@@ -88,7 +101,7 @@ export const BoxStage: React.FC<{
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [host]);
+  }, [host, canvas.width]);
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent, handle: Handle | 'move') => {

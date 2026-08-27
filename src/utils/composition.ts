@@ -24,9 +24,10 @@ import type {
   PositionPreset,
   SizePreset,
   TextRole,
+  VideoConfig,
 } from '../types/scene';
 import { CANVAS } from './timing';
-import { SIDE_MARGIN, fitToWidth } from './typography';
+import { fitToWidth, sideMargin } from './typography';
 
 /* -------------------------------------------------------------------- roles */
 
@@ -254,12 +255,13 @@ export const resolveSize = (
   size: SizePreset,
   scale = 1,
   weight = 800,
+  canvas: VideoConfig = CANVAS,
 ): number => {
   const rule = sizeRule(size);
   const chars = text.replace(/\s+/g, '').length;
   if (chars === 0) return 0;
-  const W = CANVAS.width;
-  const fitted = fitToWidth(text, targetWidth(size, chars) * W, weight);
+  const W = canvas.width;
+  const fitted = fitToWidth(text, targetWidth(size, chars) * W, weight, canvas);
 
   /**
    * The floor exists so pathological input never disappears — it must never be
@@ -272,7 +274,7 @@ export const resolveSize = (
    * inverting the rule the bleed curve exists to express. Bleeding is the
    * target's decision; the floor only stops text vanishing.
    */
-  const fills = fitToWidth(text, W, weight);
+  const fills = fitToWidth(text, W, weight, canvas);
   const floor = Math.min(rule.min * W, fills);
 
   return Math.max(floor, Math.min(rule.max * W, fitted)) * scale;
@@ -347,6 +349,7 @@ export const anchorsFor = (position: PositionPreset): Anchors =>
 const edgeBleed = (extent: number, frameExtent: number): number =>
   Math.min(extent * 0.16, frameExtent * 0.07);
 
+
 /** The vertical band the type may use — narrowed when a picture takes room. */
 export type Band = { top: number; bottom: number };
 
@@ -359,44 +362,51 @@ export const bandCentre = (band: Band): number => (band.top + band.bottom) / 2;
  * bleed symmetrically off both edges, and centring it inside the margins would
  * quietly bias every big word to the right.
  */
-export const anchorX = (h: HAnchor, inkWidth: number): number => {
-  const W = CANVAS.width;
+export const anchorX = (h: HAnchor, inkWidth: number, canvas: VideoConfig = CANVAS): number => {
+  const W = canvas.width;
+  const margin = sideMargin(canvas);
   const half = inkWidth / 2;
   switch (h) {
     case 'left':
-      return SIDE_MARGIN + half;
+      return margin + half;
     case 'right':
-      return W - SIDE_MARGIN - half;
+      return W - margin - half;
     case 'edge-left':
       return half - edgeBleed(inkWidth, W);
     case 'edge-right':
       return W - half + edgeBleed(inkWidth, W);
     case 'off-left':
-      return -half - SIDE_MARGIN;
+      return -half - margin;
     case 'off-right':
-      return W + half + SIDE_MARGIN;
+      return W + half + margin;
     case 'center':
     default:
       return W / 2;
   }
 };
 
-export const anchorY = (v: VAnchor, inkHeight: number, band: Band): number => {
-  const H = CANVAS.height;
+export const anchorY = (
+  v: VAnchor,
+  inkHeight: number,
+  band: Band,
+  canvas: VideoConfig = CANVAS,
+): number => {
+  const H = canvas.height;
+  const margin = sideMargin(canvas);
   const half = inkHeight / 2;
   switch (v) {
     case 'top':
-      return band.top + SIDE_MARGIN + half;
+      return band.top + margin + half;
     case 'bottom':
-      return band.bottom - SIDE_MARGIN - half;
+      return band.bottom - margin - half;
     case 'edge-top':
       return half - edgeBleed(inkHeight, H);
     case 'edge-bottom':
       return H - half + edgeBleed(inkHeight, H);
     case 'off-top':
-      return -half - SIDE_MARGIN;
+      return -half - margin;
     case 'off-bottom':
-      return H + half + SIDE_MARGIN;
+      return H + half + margin;
     case 'center':
     default:
       return bandCentre(band);
@@ -579,8 +589,10 @@ export const layOut = (
   items: FlowItem[],
   definition: CompositionDefinition,
   band: Band,
+  canvas: VideoConfig = CANVAS,
 ): Placement[] => {
   const placements: Placement[] = items.map(() => ({ cx: 0, cy: 0 }));
+  const margin = sideMargin(canvas);
 
   const flowing = items
     .map((item, index) => ({ item, index }))
@@ -595,20 +607,20 @@ export const layOut = (
     }
     const anchors = item.anchors ?? { h: 'center', v: 'center' };
     placements[index] = {
-      cx: anchorX(anchors.h, item.width),
-      cy: anchorY(anchors.v, item.height, band),
+      cx: anchorX(anchors.h, item.width, canvas),
+      cy: anchorY(anchors.v, item.height, band, canvas),
     };
   });
 
   if (flowing.length === 0) return placements;
 
   /* flowed ---------------------------------------------------------------- */
-  const gap = definition.gap * CANVAS.height;
+  const gap = definition.gap * canvas.height;
   const stack =
     flowing.reduce((total, { item }) => total + item.height, 0) +
     gap * (flowing.length - 1);
 
-  const available = band.bottom - band.top - SIDE_MARGIN * 2;
+  const available = band.bottom - band.top - margin * 2;
   let cursor: number;
   if (stack > available) {
     // The stack is taller than the band — which happens the moment an OVERSIZED
@@ -617,9 +629,9 @@ export const layOut = (
     // it off one edge.
     cursor = bandCentre(band) - stack / 2;
   } else if (definition.vertical === 'top') {
-    cursor = band.top + SIDE_MARGIN;
+    cursor = band.top + margin;
   } else if (definition.vertical === 'bottom') {
-    cursor = band.bottom - SIDE_MARGIN - stack;
+    cursor = band.bottom - margin - stack;
   } else {
     cursor = bandCentre(band) - stack / 2;
   }
@@ -627,7 +639,7 @@ export const layOut = (
   for (const { item, index } of flowing) {
     const anchors = item.anchors ?? { h: 'center', v: 'center' };
     placements[index] = {
-      cx: anchorX(anchors.h, item.width),
+      cx: anchorX(anchors.h, item.width, canvas),
       cy: cursor + item.height / 2,
     };
     cursor += item.height + gap;
@@ -650,9 +662,10 @@ export const layOut = (
 export const separate = (
   items: FlowItem[],
   placements: Placement[],
+  canvas: VideoConfig = CANVAS,
 ): Placement[] => {
   const out = placements.map((placement) => ({ ...placement }));
-  const AIR = CANVAS.height * 0.012;
+  const AIR = canvas.height * 0.012;
 
   for (let i = 1; i < items.length; i++) {
     if (items[i].fixed) continue;

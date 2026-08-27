@@ -12,7 +12,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import type { OverlayImage, Scene } from '../../types/scene';
+import type { CanvasFormat, OverlayImage, Scene } from '../../types/scene';
 import { serialiseProject } from '../../utils/importScript';
 import type { FieldOverrides } from '../../utils/typography';
 import { CANVAS, totalFrames } from '../../utils/timing';
@@ -41,18 +41,19 @@ export const ExtractPanel: React.FC<{
   open: boolean;
   scenes: Scene[];
   title: string | null;
+  format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
   onClose: () => void;
-}> = ({ open, scenes, title, fields, overlay, onClose }) => {
+}> = ({ open, scenes, title, format, fields, overlay, onClose }) => {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // Serialising the whole reel on every keystroke elsewhere would be wasteful,
   // and the panel is usually shut.
   const json = useMemo(
-    () => (open ? serialiseProject(scenes, title, fields, overlay) : ''),
-    [open, scenes, title, fields, overlay],
+    () => (open ? serialiseProject(scenes, title, fields, overlay, format) : ''),
+    [open, scenes, title, fields, overlay, format],
   );
 
   const frames = totalFrames(scenes, CANVAS.fps);

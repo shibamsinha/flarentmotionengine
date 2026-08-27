@@ -14,10 +14,10 @@
  */
 
 import React from 'react';
-import { AbsoluteFill, Series } from 'remotion';
+import { AbsoluteFill, Series, useVideoConfig } from 'remotion';
 import type { CalculateMetadataFunction } from 'remotion';
 import type { FlarentVideoProps } from '../types/scene';
-import { CANVAS, buildTimeline, totalFrames } from '../utils/timing';
+import { buildTimeline, canvasFor, totalFrames } from '../utils/timing';
 import { DEFAULT_PALETTE, FIELDS } from '../utils/typography';
 import { OverlayLayer } from '../components/motion/OverlayLayer';
 import { SceneRenderer } from './SceneRenderer';
@@ -28,7 +28,14 @@ export const FlarentVideo: React.FC<FlarentVideoProps> = ({
   fields,
   overlay,
 }) => {
-  const timeline = buildTimeline(scenes, CANVAS.fps);
+  // Read back from Remotion's own config rather than from `format` directly:
+  // `calculateFlarentMetadata` below is what actually decided the frame shape
+  // for this render, so asking the same way every descendant does (via
+  // `useVideoConfig`) is what keeps this component from being a second,
+  // possibly-diverging source of truth.
+  const { fps, width, height } = useVideoConfig();
+  const canvas = { width, height, fps };
+  const timeline = buildTimeline(scenes, fps);
   const base = fields?.cream ?? FIELDS.cream;
 
   if (timeline.length === 0) {
@@ -83,18 +90,23 @@ export const FlarentVideo: React.FC<FlarentVideoProps> = ({
         move it inside a sequence and it inherits that scene's lifetime and
         gets re-mounted at every boundary.
       */}
-      {overlay ? <OverlayLayer overlay={overlay} scenes={scenes} /> : null}
+      {overlay ? (
+        <OverlayLayer overlay={overlay} scenes={scenes} fps={fps} canvas={canvas} />
+      ) : null}
     </AbsoluteFill>
   );
 };
 
 export const calculateFlarentMetadata: CalculateMetadataFunction<
   FlarentVideoProps
-> = ({ props }) => ({
-  durationInFrames: totalFrames(props.scenes ?? [], CANVAS.fps),
-  fps: CANVAS.fps,
-  width: CANVAS.width,
-  height: CANVAS.height,
-});
+> = ({ props }) => {
+  const canvas = canvasFor(props.format);
+  return {
+    durationInFrames: totalFrames(props.scenes ?? [], canvas.fps),
+    fps: canvas.fps,
+    width: canvas.width,
+    height: canvas.height,
+  };
+};
 
 export const FLARENT_COMPOSITION_ID = 'FlarentVideo';

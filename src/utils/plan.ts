@@ -35,6 +35,7 @@ import type {
   SizePreset,
   TextCase,
   TextRole,
+  VideoConfig,
   WordAnimation,
 } from '../types/scene';
 import type { VisualStyleConfig } from './visualStyle';
@@ -69,14 +70,10 @@ import {
   type FlowItem,
 } from './composition';
 import {
-  KICKER_MAX,
-  KICKER_MIN,
   KICKER_RATIO,
   KICKER_WEIGHT,
   HERO_WEIGHT,
   LINE_GAP_EM,
-  RAPID_BASE_SIZE,
-  SIDE_MARGIN,
   DEFAULT_PALETTE,
   SIZING,
   applyCase,
@@ -85,7 +82,11 @@ import {
   inkBottom,
   inkTop,
   isEmphasised,
+  kickerMax,
+  kickerMin,
+  rapidBaseSize,
   resolveHeroSize,
+  sideMargin,
   splitLines,
   splitWords,
   widthOf,
@@ -295,12 +296,17 @@ const draftLines = (scene: Scene): DraftLine[] => {
  * placement rule for single-block scenes; V3 elements resolve their own `left`
  * from a position preset instead.
  */
-export const blockLeft = (block: BlockLayout, alignment: Alignment): number => {
-  if (alignment === 'left') return SIDE_MARGIN;
-  if (alignment === 'right') return CANVAS.width - SIDE_MARGIN - block.width;
+export const blockLeft = (
+  block: BlockLayout,
+  alignment: Alignment,
+  canvas: VideoConfig = CANVAS,
+): number => {
+  const margin = sideMargin(canvas);
+  if (alignment === 'left') return margin;
+  if (alignment === 'right') return canvas.width - margin - block.width;
   // Centre on the frame, not on the safe area — oversized type is meant to
   // bleed symmetrically off both edges.
-  return (CANVAS.width - block.width) / 2;
+  return (canvas.width - block.width) / 2;
 };
 
 /** Resolve every word's absolute ink centre once the block geometry is known. */
@@ -346,6 +352,7 @@ const layoutLines = (
   heroSize: number,
   sizeOf: (draft: DraftLine, index: number, text: string) => LineSpec,
   alignOf: (draft: DraftLine, index: number, heroLineIndex: number) => Alignment,
+  canvas: VideoConfig = CANVAS,
 ): BlockLayout => {
   const heroLineIndex = Math.max(
     0,
@@ -374,7 +381,7 @@ const layoutLines = (
     }
 
     const draft = drafts[lineIndex];
-    const width = widthOf(entry.text, entry.fontSize, entry.weight);
+    const width = widthOf(entry.text, entry.fontSize, entry.weight, canvas);
     const align = alignOf(draft, lineIndex, heroLineIndex);
 
     // Word-level x positions inside the line, so styles can animate words
@@ -382,13 +389,13 @@ const layoutLines = (
     let cursor = 0;
     const words: PlannedWord[] = draft.words.map((raw, indexInLine) => {
       const text = applyCase(raw, textCase);
-      const wordWidth = widthOf(text, entry.fontSize, entry.weight);
+      const wordWidth = widthOf(text, entry.fontSize, entry.weight, canvas);
       const spaceWidth =
         indexInLine === draft.words.length - 1
           ? 0
-          : widthOf(`${text} x`, entry.fontSize, entry.weight) -
+          : widthOf(`${text} x`, entry.fontSize, entry.weight, canvas) -
             wordWidth -
-            widthOf('x', entry.fontSize, entry.weight);
+            widthOf('x', entry.fontSize, entry.weight, canvas);
       const word: PlannedWord = {
         id: `${idPrefix}-l${lineIndex}-w${indexInLine}`,
         text,
@@ -458,8 +465,9 @@ const layoutBlock = (
    * the clamp holds the caption at a fixed size while only the hero gives way.
    */
   fit = 1,
+  canvas: VideoConfig = CANVAS,
 ): BlockLayout => {
-  const maxLineWidth = CANVAS.width * (SIZING[scene.style]?.target ?? 0.84);
+  const maxLineWidth = canvas.width * (SIZING[scene.style]?.target ?? 0.84);
 
   const block = layoutLines(
     idPrefix,
@@ -475,10 +483,10 @@ const layoutBlock = (
       // long caption can never overflow the frame.
       const scale = (scene.fontSize ?? 1) * fit;
       const wanted = Math.min(
-        KICKER_MAX * scale,
-        Math.max(KICKER_MIN * scale, heroSize * KICKER_RATIO),
+        kickerMax(canvas) * scale,
+        Math.max(kickerMin(canvas) * scale, heroSize * KICKER_RATIO),
       );
-      const ceiling = fitToWidth(text, maxLineWidth, KICKER_WEIGHT);
+      const ceiling = fitToWidth(text, maxLineWidth, KICKER_WEIGHT, canvas);
       return { text, fontSize: Math.min(wanted, ceiling), weight: KICKER_WEIGHT };
     },
     (draft, lineIndex, heroLineIndex) => {
@@ -488,10 +496,11 @@ const layoutBlock = (
       // hangs right.
       return lineIndex < heroLineIndex ? 'left' : 'right';
     },
+    canvas,
   );
 
   block.top = centreY - block.inkCentre;
-  block.left = blockLeft(block, scene.alignment);
+  block.left = blockLeft(block, scene.alignment, canvas);
   return block;
 };
 
@@ -508,17 +517,18 @@ const layoutBlockInBand = (
   textCase: TextCase,
   centreY: number,
   bandHeight: number,
+  canvas: VideoConfig = CANVAS,
 ): BlockLayout => {
   const limit = bandHeight * 0.94;
   let fit = 1;
-  let block = layoutBlock(idPrefix, drafts, heroSize, scene, textCase, centreY, fit);
+  let block = layoutBlock(idPrefix, drafts, heroSize, scene, textCase, centreY, fit, canvas);
 
   // Two or three passes is plenty — every term scales linearly with `fit`, so
   // the ratio converges immediately. The loop exists for the multi-line case
   // where the support clamp makes the first estimate slightly optimistic.
   for (let pass = 0; pass < 4 && block.inkHeight > limit && block.inkHeight > 0; pass++) {
     fit *= limit / block.inkHeight;
-    block = layoutBlock(idPrefix, drafts, heroSize * fit, scene, textCase, centreY, fit);
+    block = layoutBlock(idPrefix, drafts, heroSize * fit, scene, textCase, centreY, fit, canvas);
   }
 
   resolveAbsolutePositions(block);
@@ -621,6 +631,7 @@ const planRapid = (
   fps: number,
   palette: PaletteName,
   picture: ImageComposition,
+  canvas: VideoConfig = CANVAS,
 ): RapidBeat[] => {
   const items = rapidItems(scene.text);
   if (items.length === 0) return [];
@@ -642,10 +653,10 @@ const planRapid = (
     );
     const text = applyCase(item, scene.case ?? 'lower');
     const size = emphasised
-      ? resolveHeroSize(text, rule, scale)
+      ? resolveHeroSize(text, rule, scale, HERO_WEIGHT, canvas)
       : Math.min(
-          RAPID_BASE_SIZE * scale,
-          fitToWidth(text, rule.target * CANVAS.width),
+          rapidBaseSize(canvas) * scale,
+          fitToWidth(text, rule.target * canvas.width, HERO_WEIGHT, canvas),
         );
 
     const block = layoutBlockInBand(
@@ -656,6 +667,7 @@ const planRapid = (
       scene.case ?? 'lower',
       typeCentreY(picture),
       typeBandHeight(picture),
+      canvas,
     );
     assignTiming(block, 'rapid', lengths[index], fps);
 
@@ -770,6 +782,7 @@ const resolveElement = (
   element: SceneElement,
   index: number,
   scene: Scene,
+  canvas: VideoConfig = CANVAS,
 ): ResolvedElement => {
   const role: TextRole = element.role ?? 'primary';
   const inheritedSize = element.size === undefined;
@@ -778,7 +791,7 @@ const resolveElement = (
   const drafts = elementDrafts(element);
   const weight = ROLE_WEIGHT_FACE[role];
   const scale = (element.scale ?? 1) * (scene.fontSize ?? 1);
-  const fontSize = resolveSize(longestLine(drafts, textCase), size, scale, weight);
+  const fontSize = resolveSize(longestLine(drafts, textCase), size, scale, weight, canvas);
 
   return {
     source: element,
@@ -813,8 +826,12 @@ const resolveElement = (
  * Only sizes inherited from the role are capped. An explicit `size` is the
  * author overruling the default on purpose, and V3 lets them.
  */
-const enforceHierarchy = (elements: ResolvedElement[], dominant: ResolvedElement): void => {
-  const W = CANVAS.width;
+const enforceHierarchy = (
+  elements: ResolvedElement[],
+  dominant: ResolvedElement,
+  canvas: VideoConfig = CANVAS,
+): void => {
+  const W = canvas.width;
   for (const element of elements) {
     if (element === dominant || !element.inheritedSize) continue;
     const ceiling = ROLE_CEILING[element.role] * dominant.fontSize;
@@ -835,13 +852,14 @@ const visibleFraction = (
   cy: number,
   width: number,
   height: number,
+  canvas: VideoConfig = CANVAS,
 ): number => {
   if (width <= 0 || height <= 0) return 1;
   const w =
-    Math.max(0, Math.min(cx + width / 2, CANVAS.width) - Math.max(cx - width / 2, 0)) /
+    Math.max(0, Math.min(cx + width / 2, canvas.width) - Math.max(cx - width / 2, 0)) /
     width;
   const h =
-    Math.max(0, Math.min(cy + height / 2, CANVAS.height) - Math.max(cy - height / 2, 0)) /
+    Math.max(0, Math.min(cy + height / 2, canvas.height) - Math.max(cy - height / 2, 0)) /
     height;
   return Math.min(w, h);
 };
@@ -850,6 +868,7 @@ const layoutElementBlock = (
   element: ResolvedElement,
   fontSize: number,
   align: Alignment,
+  canvas: VideoConfig = CANVAS,
 ): BlockLayout =>
   layoutLines(
     element.id,
@@ -859,6 +878,7 @@ const layoutElementBlock = (
     fontSize,
     (_draft, _index, text) => ({ text, fontSize, weight: element.weight }),
     () => align,
+    canvas,
   );
 
 /**
@@ -876,13 +896,14 @@ const measureElement = (
   anchors: Anchors,
   band: Band,
   hasFixedPlacement: boolean,
+  canvas: VideoConfig = CANVAS,
 ): BlockLayout => {
   const rule = sizeRule(element.size);
   const bandLimit = (band.bottom - band.top) * rule.bandRoom;
   const offscreen = anchors.h.startsWith('off') || anchors.v.startsWith('off');
 
   let fontSize = element.fontSize;
-  let block = layoutElementBlock(element, fontSize, align);
+  let block = layoutElementBlock(element, fontSize, align, canvas);
 
   for (let pass = 0; pass < 4; pass++) {
     const tall = block.inkHeight > bandLimit && block.inkHeight > 0;
@@ -892,10 +913,11 @@ const measureElement = (
       offscreen || hasFixedPlacement
         ? 1
         : visibleFraction(
-            anchorX(anchors.h, block.width),
-            anchorY(anchors.v, block.inkHeight, band),
+            anchorX(anchors.h, block.width, canvas),
+            anchorY(anchors.v, block.inkHeight, band, canvas),
             block.width,
             block.inkHeight,
+            canvas,
           );
 
     if (!tall && visible >= rule.minVisible) break;
@@ -904,7 +926,7 @@ const measureElement = (
     const byVisible = visible > 0 ? Math.min(1, visible / rule.minVisible) : 0.5;
     fontSize *= Math.min(byHeight, byVisible) * 0.995;
     if (!(fontSize > 0)) break;
-    block = layoutElementBlock(element, fontSize, align);
+    block = layoutElementBlock(element, fontSize, align, canvas);
   }
 
   element.fontSize = fontSize;
@@ -918,6 +940,7 @@ const planRapidElement = (
   fps: number,
   palette: PaletteName,
   align: Alignment,
+  canvas: VideoConfig = CANVAS,
 ): RapidBeat[] => {
   const items = rapidItems(element.source.text);
   if (items.length === 0) return [];
@@ -938,7 +961,7 @@ const planRapidElement = (
       id: `${element.id}-b${index}`,
       drafts: [{ role: 'hero', words }],
     };
-    const block = layoutElementBlock(beatElement, element.fontSize, align);
+    const block = layoutElementBlock(beatElement, element.fontSize, align, canvas);
     assignTiming(block, 'rapid', lengths[index], fps);
 
     return [
@@ -964,11 +987,12 @@ const planComposed = (
   fps: number,
   palette: PaletteName,
   picture: ImageComposition,
+  canvas: VideoConfig = CANVAS,
 ): ScenePlan => {
   const band: Band = { top: picture.typeTop, bottom: picture.typeBottom };
 
   const resolved = (scene.elements ?? [])
-    .map((element, index) => resolveElement(element, index, scene))
+    .map((element, index) => resolveElement(element, index, scene, canvas))
     .filter((element) => element.drafts.length > 0);
 
   if (resolved.length === 0) {
@@ -995,7 +1019,7 @@ const planComposed = (
         element.fontSize > dominant.fontSize);
     if (better) dominant = element;
   }
-  enforceHierarchy(resolved, dominant);
+  enforceHierarchy(resolved, dominant, canvas);
 
   const layout = scene.composition ?? suggestComposition(resolved.length, dominant.size);
   const definition = compositionDefinition(layout);
@@ -1021,21 +1045,22 @@ const planComposed = (
   const fixed = resolved.map((element) =>
     typeof element.source.x === 'number' && typeof element.source.y === 'number'
       ? {
-          cx: element.source.x * CANVAS.width,
-          cy: element.source.y * CANVAS.height,
+          cx: element.source.x * canvas.width,
+          cy: element.source.y * canvas.height,
         }
       : undefined,
   );
 
   const blocks = resolved.map((element, index) =>
     element.style === 'rapid'
-      ? layoutElementBlock(element, element.fontSize, aligns[index])
+      ? layoutElementBlock(element, element.fontSize, aligns[index], canvas)
       : measureElement(
           element,
           aligns[index],
           anchors[index],
           band,
           fixed[index] !== undefined,
+          canvas,
         ),
   );
 
@@ -1053,7 +1078,7 @@ const planComposed = (
       definition.absolute === undefined,
   }));
 
-  const placements = separate(items, layOut(items, definition, band));
+  const placements = separate(items, layOut(items, definition, band, canvas), canvas);
 
   /* build ------------------------------------------------------------------ */
   const elements: PlannedElement[] = resolved.map((element, index) => {
@@ -1070,6 +1095,7 @@ const planComposed = (
             fps,
             palette,
             aligns[index],
+            canvas,
           )
         : [];
     for (const beat of beats) placeBlock(beat.block, place.cx, place.cy);
@@ -1084,8 +1110,8 @@ const planComposed = (
       ? (() => {
           const origin = anchorsFor(element.source.from as PositionPreset);
           return {
-            x: anchorX(origin.h, block.width) - place.cx,
-            y: anchorY(origin.v, block.inkHeight, band) - place.cy,
+            x: anchorX(origin.h, block.width, canvas) - place.cx,
+            y: anchorY(origin.v, block.inkHeight, band, canvas) - place.cy,
           };
         })()
       : undefined;
@@ -1151,6 +1177,7 @@ const planSingle = (
   fps: number,
   palette: PaletteName,
   picture: ImageComposition,
+  canvas: VideoConfig = CANVAS,
 ): ScenePlan => {
   const textCase = scene.case ?? 'lower';
   const centreY = typeCentreY(picture);
@@ -1190,7 +1217,7 @@ const planSingle = (
   });
 
   if (scene.style === 'rapid') {
-    const beats = planRapid(scene, durationInFrames, fps, palette, picture);
+    const beats = planRapid(scene, durationInFrames, fps, palette, picture, canvas);
     return single(
       beats[0]?.block ?? emptyBlock(centreY),
       beats,
@@ -1216,7 +1243,7 @@ const planSingle = (
   const heroDraft = drafts.find((line) => line.role === 'hero') ?? drafts[0];
   const heroText = applyCase(heroDraft.words.join(' '), textCase);
   const rule = SIZING[scene.style] ?? SIZING.punch;
-  const heroSize = resolveHeroSize(heroText, rule, scene.fontSize ?? 1);
+  const heroSize = resolveHeroSize(heroText, rule, scene.fontSize ?? 1, HERO_WEIGHT, canvas);
 
   const block = layoutBlockInBand(
     scene.id,
@@ -1226,6 +1253,7 @@ const planSingle = (
     textCase,
     centreY,
     bandHeight,
+    canvas,
   );
   assignTiming(block, scene.style, durationInFrames, fps);
 
@@ -1253,11 +1281,18 @@ export const planScene = (
   durationInFrames: number,
   fps: number = CANVAS.fps,
   palette: PaletteName = DEFAULT_PALETTE,
+  /**
+   * The project's frame. Defaults to portrait so every existing caller —
+   * scripts, tests, anything not yet updated — keeps planning exactly the
+   * scenes it always did. A landscape project threads its own canvas down
+   * from `SceneRenderer`, which is the only place that knows the format.
+   */
+  canvas: VideoConfig = CANVAS,
 ): ScenePlan => {
-  const picture = composeImage(scene.image);
+  const picture = composeImage(scene.image, canvas);
   return scene.elements && scene.elements.length > 0
-    ? planComposed(scene, durationInFrames, fps, palette, picture)
-    : planSingle(scene, durationInFrames, fps, palette, picture);
+    ? planComposed(scene, durationInFrames, fps, palette, picture, canvas)
+    : planSingle(scene, durationInFrames, fps, palette, picture, canvas);
 };
 
 /** Every word on screen in a scene, across all its elements. */

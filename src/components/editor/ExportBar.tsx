@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { OverlayImage, PaletteName, Scene } from '../../types/scene';
+import type { CanvasFormat, OverlayImage, PaletteName, Scene } from '../../types/scene';
 import type { FieldOverrides } from '../../utils/typography';
 import { CANVAS, totalFrames } from '../../utils/timing';
 
@@ -27,10 +27,11 @@ const PHASE_LABEL: Record<Phase, string> = {
 export const ExportBar: React.FC<{
   scenes: Scene[];
   palette: PaletteName;
+  format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
   saved: boolean;
-}> = ({ scenes, palette, fields, overlay, saved }) => {
+}> = ({ scenes, palette, format, fields, overlay, saved }) => {
   const [job, setJob] = useState<JobState>({ phase: 'idle', progress: 0 });
   const pollRef = useRef<number | null>(null);
 
@@ -77,7 +78,7 @@ export const ExportBar: React.FC<{
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenes, palette, fields, overlay }),
+        body: JSON.stringify({ scenes, palette, format, fields, overlay }),
       });
       if (!response.ok) {
         throw new Error(`Render server responded ${response.status}`);
@@ -94,7 +95,7 @@ export const ExportBar: React.FC<{
             : 'Export failed',
       });
     }
-  }, [scenes, palette, fields, overlay, poll]);
+  }, [scenes, palette, format, fields, overlay, poll]);
 
   const busy = ['starting', 'browser', 'bundling', 'rendering'].includes(job.phase);
   const frames = totalFrames(scenes, CANVAS.fps);

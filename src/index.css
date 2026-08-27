@@ -150,6 +150,25 @@ select {
   margin-left: -8px;
 }
 
+/* The format switch reuses .palette-chip's shell — same tier of decision, same
+   place in the bar — with a tiny frame-shaped glyph standing in for the dots. */
+.format-glyph {
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+  opacity: 0.85;
+}
+
+.format-glyph[data-orientation='portrait'] {
+  width: 7px;
+  height: 10px;
+}
+
+.format-glyph[data-orientation='landscape'] {
+  width: 10px;
+  height: 7px;
+}
+
 .topbar-meta {
   display: flex;
   gap: 12px;

@@ -22,6 +22,7 @@ import type {
   TextCase,
 } from '../types/scene';
 import { CANVAS } from './timing';
+import type { VideoConfig } from '../types/scene';
 
 /* ------------------------------------------------------------------ colour */
 
@@ -218,8 +219,8 @@ export const inkBottom = (text: string, fontSize: number): number =>
  * type — the reference sets its hero words almost touching. Returned in `em`
  * so it survives any font-size change (and so fitText stays exact).
  */
-export const trackingFor = (fontSize: number): string => {
-  const w = CANVAS.width;
+export const trackingFor = (fontSize: number, canvas: VideoConfig = CANVAS): string => {
+  const w = canvas.width;
   if (fontSize >= 0.3 * w) return '-0.05em';
   if (fontSize >= 0.18 * w) return '-0.04em';
   if (fontSize >= 0.1 * w) return '-0.032em';
@@ -228,7 +229,15 @@ export const trackingFor = (fontSize: number): string => {
 
 /* ------------------------------------------------------------------ sizing */
 
-export const SIDE_MARGIN = 0.08 * CANVAS.width; // 86px — matches the reference
+/**
+ * 8% of frame width, matching the reference at 1080px. A function rather than a
+ * baked constant: it is evaluated once at module load in the fixed-CANVAS
+ * world, but the engine now plans against whichever format a project chose,
+ * so every consumer resolves it against that format's own width.
+ */
+export const sideMargin = (canvas: VideoConfig = CANVAS): number => 0.08 * canvas.width;
+/** Portrait's own margin, for the few call sites that have not been updated. */
+export const SIDE_MARGIN = sideMargin(CANVAS);
 
 export type SizingRule = {
   /** Target line width as a multiple of the frame width. >1 lets type bleed. */
@@ -276,7 +285,8 @@ export const SIZING: Record<string, SizingRule> = {
 };
 
 /** RAPID's non-emphasised beats are set small — 0.19·W in the reference. */
-export const RAPID_BASE_SIZE = 0.19 * CANVAS.width;
+export const rapidBaseSize = (canvas: VideoConfig = CANVAS): number => 0.19 * canvas.width;
+export const RAPID_BASE_SIZE = rapidBaseSize(CANVAS);
 
 /**
  * Supporting words track the hero at ~0.265 — but only inside a band. The
@@ -286,22 +296,33 @@ export const RAPID_BASE_SIZE = 0.19 * CANVAS.width;
  * off the hero makes the caption vanish under a long word.
  */
 export const KICKER_RATIO = 0.265;
-export const KICKER_MIN = 0.078 * CANVAS.width;
-export const KICKER_MAX = 0.105 * CANVAS.width;
+export const kickerMin = (canvas: VideoConfig = CANVAS): number => 0.078 * canvas.width;
+export const kickerMax = (canvas: VideoConfig = CANVAS): number => 0.105 * canvas.width;
+export const KICKER_MIN = kickerMin(CANVAS);
+export const KICKER_MAX = kickerMax(CANVAS);
 
 /** Visual gap between a line's ink and the next line's ink, in hero `em`. */
 export const LINE_GAP_EM = 0.042;
 
 const fitCache = new Map<string, number>();
 
-/** fitText, memoised. Remotion re-renders every frame; measurement is not free. */
+/**
+ * fitText, memoised. Remotion re-renders every frame; measurement is not free.
+ *
+ * `canvas` only ever affects the result through `trackingFor`'s breakpoints —
+ * `withinWidth` is already an absolute px value the caller resolved — but the
+ * cache key must still carry it: the same (text, width, weight) can legitimately
+ * measure to a different tracking, and so a different size, under a different
+ * frame width.
+ */
 export const fitToWidth = (
   text: string,
   withinWidth: number,
   weight: number = HERO_WEIGHT,
+  canvas: VideoConfig = CANVAS,
 ): number => {
   if (!text.trim()) return 0;
-  const key = `${text}|${Math.round(withinWidth)}|${weight}`;
+  const key = `${text}|${Math.round(withinWidth)}|${weight}|${canvas.width}`;
   const hit = fitCache.get(key);
   if (hit !== undefined) return hit;
 
@@ -311,7 +332,7 @@ export const fitToWidth = (
     withinWidth,
     fontFamily: FONT_STACK,
     fontWeight: weight,
-    letterSpacing: trackingFor(withinWidth * 0.4),
+    letterSpacing: trackingFor(withinWidth * 0.4, canvas),
   }).fontSize;
 
   size = fitText({
@@ -319,7 +340,7 @@ export const fitToWidth = (
     withinWidth,
     fontFamily: FONT_STACK,
     fontWeight: weight,
-    letterSpacing: trackingFor(size),
+    letterSpacing: trackingFor(size, canvas),
   }).fontSize;
 
   fitCache.set(key, size);
@@ -332,9 +353,10 @@ export const widthOf = (
   text: string,
   fontSize: number,
   weight: number = HERO_WEIGHT,
+  canvas: VideoConfig = CANVAS,
 ): number => {
   if (!text.trim()) return 0;
-  const key = `${text}|${Math.round(fontSize * 100)}|${weight}`;
+  const key = `${text}|${Math.round(fontSize * 100)}|${weight}|${canvas.width}`;
   const hit = widthCache.get(key);
   if (hit !== undefined) return hit;
   const { width } = measureText({
@@ -342,7 +364,7 @@ export const widthOf = (
     fontFamily: FONT_STACK,
     fontSize,
     fontWeight: weight,
-    letterSpacing: trackingFor(fontSize),
+    letterSpacing: trackingFor(fontSize, canvas),
   });
   widthCache.set(key, width);
   return width;
@@ -360,13 +382,14 @@ export const resolveHeroSize = (
   scale = 1,
   /** V3 sets lighter and heavier faces per role; measurement must follow. */
   weight: number = HERO_WEIGHT,
+  canvas: VideoConfig = CANVAS,
 ): number => {
-  const w = CANVAS.width;
+  const w = canvas.width;
   const short =
     rule.shortTarget !== undefined &&
     text.replace(/\s+/g, '').length <= (rule.shortMaxChars ?? 5);
   const target = short ? (rule.shortTarget as number) : rule.target;
-  const fitted = fitToWidth(text, target * w, weight);
+  const fitted = fitToWidth(text, target * w, weight, canvas);
   return Math.max(rule.min * w, Math.min(rule.max * w, fitted)) * scale;
 };
 

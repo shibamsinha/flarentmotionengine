@@ -9,7 +9,7 @@
  */
 
 import React, { useCallback } from 'react';
-import type { OverlayImage, Scene } from '../../types/scene';
+import type { OverlayImage, Scene, VideoConfig } from '../../types/scene';
 import { CANVAS, buildTimeline, sceneAtFrame } from '../../utils/timing';
 import { OVERLAY_MIN, overlayRect } from '../motion/OverlayLayer';
 import { BoxStage, type Box } from './BoxStage';
@@ -27,7 +27,9 @@ export const OverlayStage: React.FC<{
   selected: boolean;
   onSelect: () => void;
   onChange: (next: OverlayImage) => void;
-}> = ({ overlay, scenes, frame, active, selected, onSelect, onChange }) => {
+  /** The project's frame. Portrait unless the project chose landscape. */
+  canvas?: VideoConfig;
+}> = ({ overlay, scenes, frame, active, selected, onSelect, onChange, canvas = CANVAS }) => {
   const commit = useCallback(
     (box: Box) => {
       if (!overlay) return;
@@ -35,13 +37,13 @@ export const OverlayStage: React.FC<{
         ...overlay,
         // Stored as frame fractions, and deliberately not clamped — dragging
         // the overlay half off the edge is a placement, not a mistake.
-        x: round4(box.x / CANVAS.width),
-        y: round4(box.y / CANVAS.height),
-        width: round4(box.width / CANVAS.width),
-        height: round4(box.height / CANVAS.height),
+        x: round4(box.x / canvas.width),
+        y: round4(box.y / canvas.height),
+        width: round4(box.width / canvas.width),
+        height: round4(box.height / canvas.height),
       });
     },
-    [overlay, onChange],
+    [overlay, onChange, canvas],
   );
 
   if (!overlay || !active) return null;
@@ -51,15 +53,16 @@ export const OverlayStage: React.FC<{
 
   return (
     <BoxStage
-      rect={overlayRect(overlay)}
-      min={{ width: OVERLAY_MIN * CANVAS.width, height: OVERLAY_MIN * CANVAS.height }}
+      rect={overlayRect(overlay, canvas)}
+      min={{ width: OVERLAY_MIN * canvas.width, height: OVERLAY_MIN * canvas.height }}
       onChange={commit}
       selected={selected}
       onSelect={onSelect}
       variant="overlay"
+      canvas={canvas}
       readout={(box) =>
-        `${Math.round((box.width / CANVAS.width) * 100)}% × ${Math.round(
-          (box.height / CANVAS.height) * 100,
+        `${Math.round((box.width / canvas.width) * 100)}% × ${Math.round(
+          (box.height / canvas.height) * 100,
         )}%`
       }
     />

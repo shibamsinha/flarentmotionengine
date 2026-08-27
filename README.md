@@ -305,6 +305,51 @@ GRADIENT for exactly two moments — DIFFERENT. and CUSTOMERS. Measured across i
 nine scenes, distinct ink colours run 47, 50, 59, **194**, 49, 107, 48, 46,
 **220**. Four gradients would have spent the effect before the ending needed it.
 
+## Landscape
+
+The frame is a project-level choice — `9:16` (1080×1920) or `16:9`
+(1920×1080) — picked once, the same tier as the palette, next to it in the top
+bar. It is not a crop or a letterbox of the other: the whole type system
+replans against whichever frame is active, because almost every constant in
+the engine (margins, the type scale, composition gaps, throw distances) is
+expressed as a *fraction* of the frame rather than a fixed pixel value.
+
+### How the value actually reaches everything
+
+`CanvasFormat` (`'portrait' | 'landscape'`) lives on `FlarentVideoProps`, next
+to `palette`. From there it reaches the render two different ways, matching
+where the reader actually is:
+
+- **Inside the Remotion tree** (the planner, the animation styles, the
+  overlay), nothing receives `format` as a prop. `calculateFlarentMetadata`
+  resolves it to a real `{ width, height, fps }` once, for the whole
+  composition, and every descendant asks Remotion's own `useVideoConfig()` for
+  it — the same call in the editor's `<Player>` and in the render server's
+  headless export. Two render paths, one source of truth.
+- **Outside the tree** — `BoxStage`/`ImageStage`/`OverlayStage`, the plain
+  divs the editor draws over the player to make a picture or the overlay
+  draggable — have no Remotion context to ask, so `App.tsx` threads `canvas`
+  to them explicitly, computed once from the project's `format` state.
+
+Every sizing/layout function in `utils/` (`planScene`, `composeImage`,
+`anchorX`/`anchorY`, `resolveSize`, `resolveHeroSize`, `fitToWidth`, …) takes
+an explicit `canvas: VideoConfig` parameter defaulting to portrait — never a
+hidden global. That was the deliberate call over a mutable "current canvas"
+binding: Remotion's `calculateMetadata` step and the actual frame-rendering
+pass are not guaranteed to share JS module state, so anything relying on a
+global would be correct in the editor and silently wrong in an export.
+
+### Verified
+
+Rendered the same reel both ways and measured the output, not just watched
+the preview: the landscape MP4 probes at exactly 1920×1080/30fps with the
+same frame count as its portrait sibling (432 frames both), and every scene's
+hierarchy, bleed and composition re-laid-out correctly for the wider frame —
+GRADIENT and OVERSIZED scenes bleed left/right on 16:9 exactly as designed,
+not stretched from the portrait numbers. Portrait itself was diffed against a
+pre-existing baseline; the deltas sit inside the renderer's own run-to-run
+noise floor (confirmed by rendering identical code twice), not a regression.
+
 ## The static overlay
 
 A project-level image that sits over the whole reel — a logo, a watermark, a

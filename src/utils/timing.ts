@@ -6,13 +6,46 @@
  * exactly the same code path.
  */
 
-import type { Scene, VideoConfig } from '../types/scene';
+import type { CanvasFormat, Scene, VideoConfig } from '../types/scene';
 
-export const CANVAS: VideoConfig = {
-  width: 1080,
-  height: 1920,
-  fps: 30,
+/**
+ * The frame formats the engine renders.
+ *
+ * A project picks one format, once — the same tier as the palette, not a
+ * per-scene setting. `fps` is identical across formats on purpose: only the
+ * frame changes shape, never the clock the reel is timed against, so a
+ * duration in seconds means the same number of frames whichever format is
+ * active.
+ *
+ * Landscape is not a crop of portrait — it is portrait's width and height
+ * swapped, so every fractional rule in the engine (margins, bands, throws,
+ * the type scale) lands on the new frame's own proportions rather than being
+ * stretched or letterboxed into it.
+ */
+export const CANVAS_FORMATS: Record<CanvasFormat, VideoConfig> = {
+  portrait: { width: 1080, height: 1920, fps: 30 },
+  landscape: { width: 1920, height: 1080, fps: 30 },
 };
+
+export const FORMAT_LABEL: Record<CanvasFormat, string> = {
+  portrait: 'Portrait · 9:16',
+  landscape: 'Landscape · 16:9',
+};
+
+export const DEFAULT_FORMAT: CanvasFormat = 'portrait';
+
+export const canvasFor = (format: CanvasFormat = DEFAULT_FORMAT): VideoConfig =>
+  CANVAS_FORMATS[format] ?? CANVAS_FORMATS[DEFAULT_FORMAT];
+
+/**
+ * The portrait frame, kept as the engine's default `VideoConfig`.
+ *
+ * Every sizing/layout function below takes an explicit `canvas` parameter
+ * defaulting to this — never a hidden global — so the same function is
+ * correct whichever format is actually being planned. `CANVAS` itself is only
+ * ever "the format nobody specified," which is portrait.
+ */
+export const CANVAS: VideoConfig = CANVAS_FORMATS.portrait;
 
 /** Guard rails for the editor UI. */
 export const MIN_SCENE_DURATION = 0.15;

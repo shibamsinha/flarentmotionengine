@@ -9,7 +9,7 @@
  */
 
 import React, { useCallback } from 'react';
-import type { Scene } from '../../types/scene';
+import type { Scene, VideoConfig } from '../../types/scene';
 import { CANVAS } from '../../utils/timing';
 import { FREE_MIN, composeImage, freeBoxFrom } from '../../utils/imageLayout';
 import { BoxStage, type Box } from './BoxStage';
@@ -22,7 +22,9 @@ export const ImageStage: React.FC<{
   selected: boolean;
   onSelect: () => void;
   onChange: (patch: Partial<Scene>) => void;
-}> = ({ scene, active, selected, onSelect, onChange }) => {
+  /** The project's frame. Portrait unless the project chose landscape. */
+  canvas?: VideoConfig;
+}> = ({ scene, active, selected, onSelect, onChange, canvas = CANVAS }) => {
   const image = scene?.image;
 
   const commit = useCallback(
@@ -32,35 +34,36 @@ export const ImageStage: React.FC<{
         image: {
           ...scene.image,
           placement: 'free',
-          x: box.x / CANVAS.width,
-          y: box.y / CANVAS.height,
-          width: box.width / CANVAS.width,
-          height: box.height / CANVAS.height,
+          x: box.x / canvas.width,
+          y: box.y / canvas.height,
+          width: box.width / canvas.width,
+          height: box.height / canvas.height,
         },
       });
     },
-    [scene, onChange],
+    [scene, onChange, canvas],
   );
 
   // Seed `free` from the current preset rect the moment a drag starts, so the
   // first pixel of movement does not also move the box.
   const grab = useCallback(() => {
     if (!scene?.image || scene.image.placement === 'free') return;
-    const seeded = freeBoxFrom(composeImage(scene.image));
+    const seeded = freeBoxFrom(composeImage(scene.image, canvas), canvas);
     onChange({ image: { ...scene.image, placement: 'free', ...seeded } });
-  }, [scene, onChange]);
+  }, [scene, onChange, canvas]);
 
   if (!scene || !image || !active) return null;
 
   return (
     <BoxStage
-      rect={composeImage(image).rect}
-      min={{ width: FREE_MIN * CANVAS.width, height: FREE_MIN * CANVAS.height }}
+      rect={composeImage(image, canvas).rect}
+      min={{ width: FREE_MIN * canvas.width, height: FREE_MIN * canvas.height }}
       onChange={commit}
       onGrab={grab}
       selected={selected}
       onSelect={onSelect}
       variant="image"
+      canvas={canvas}
     />
   );
 };

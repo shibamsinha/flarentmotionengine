@@ -16,6 +16,7 @@
 import type { VisualStyleConfig, VisualStyleName } from './visualStyle';
 import type {
   Alignment,
+  CanvasFormat,
   AnimationStyle,
   BackgroundName,
   CompositionPreset,
@@ -33,8 +34,10 @@ import type {
 import { makeSceneId } from '../data/defaultScenes';
 import {
   CANVAS,
+  DEFAULT_FORMAT,
   MAX_SCENE_DURATION,
   MIN_SCENE_DURATION,
+  canvasFor,
 } from './timing';
 import type { FieldOverrides } from './typography';
 
@@ -50,6 +53,8 @@ export type ImportIssue = {
 export type ImportedProject = {
   title: string | null;
   palette: PaletteName;
+  /** Portrait unless the document declared or implied landscape. */
+  format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
   scenes: Scene[];
@@ -75,6 +80,20 @@ const BACKGROUNDS: Record<string, BackgroundName> = {
   green: 'green',
   cream: 'cream',
   black: 'black',
+};
+
+/**
+ * A handful of synonyms accepted for each format, because a script is more
+ * likely to say WIDE or 16:9 than the engine's own internal name for it.
+ */
+const FORMATS: Record<string, CanvasFormat> = {
+  portrait: 'portrait',
+  vertical: 'portrait',
+  '9:16': 'portrait',
+  landscape: 'landscape',
+  horizontal: 'landscape',
+  wide: 'landscape',
+  '16:9': 'landscape',
 };
 
 const ALIGNMENTS: Record<string, Alignment> = {
@@ -920,27 +939,47 @@ export const parseFlarentScript = (input: string): ImportResult => {
   const height = asNumber(doc.height);
   const fps = asNumber(doc.fps);
 
+  // A declared `format` wins outright. Absent that, infer it from width/height
+  // — a document that says 1920×1080 clearly means landscape even though it
+  // never used the word — and only fall back to the engine default when
+  // neither is present.
+  let format: CanvasFormat = DEFAULT_FORMAT;
+  const rawFormat = asString(doc.format ?? doc.orientation);
+  if (rawFormat !== null && rawFormat.trim() !== '') {
+    const found = FORMATS[vocab(rawFormat)];
+    if (!found) {
+      push({
+        path: 'format',
+        message: `"${rawFormat}" is not a valid format. Expected one of: ${canon(FORMATS)}.`,
+        severity: 'error',
+      });
+    } else format = found;
+  } else if (width !== null && height !== null) {
+    format = width >= height ? 'landscape' : 'portrait';
+  }
+
+  const canvas = canvasFor(format);
   if (width !== null && height !== null) {
     const declared = width / height;
-    const engine = CANVAS.width / CANVAS.height;
+    const engine = canvas.width / canvas.height;
     if (Math.abs(declared - engine) > 0.01) {
       push({
         path: 'width/height',
-        message: `${width}×${height} is not 9:16 — the reel will still render at ${CANVAS.width}×${CANVAS.height}.`,
+        message: `${width}×${height} is not ${format === 'landscape' ? '16:9' : '9:16'} — the reel will still render at ${canvas.width}×${canvas.height}.`,
         severity: 'warning',
       });
-    } else if (width !== CANVAS.width || height !== CANVAS.height) {
+    } else if (width !== canvas.width || height !== canvas.height) {
       push({
         path: 'width/height',
-        message: `${width}×${height} scaled up to ${CANVAS.width}×${CANVAS.height} (same aspect).`,
+        message: `${width}×${height} scaled to ${canvas.width}×${canvas.height} (same aspect).`,
         severity: 'warning',
       });
     }
   }
-  if (fps !== null && fps !== CANVAS.fps) {
+  if (fps !== null && fps !== canvas.fps) {
     push({
       path: 'fps',
-      message: `${fps}fps requested — the engine renders at ${CANVAS.fps}fps, and durations are mapped onto that grid.`,
+      message: `${fps}fps requested — the engine renders at ${canvas.fps}fps, and durations are mapped onto that grid.`,
       severity: 'warning',
     });
   }
@@ -1060,6 +1099,7 @@ export const parseFlarentScript = (input: string): ImportResult => {
     project: {
       title: asString(doc.title)?.trim() || null,
       palette: usesBlack ? 'ink' : 'forest',
+      format,
       fields,
       overlay,
       scenes,
@@ -1108,14 +1148,16 @@ export const serialiseProject = (
   title: string | null,
   fields: FieldOverrides,
   overlay: OverlayImage | null = null,
+  format: CanvasFormat = DEFAULT_FORMAT,
 ): string => {
+  const canvas = canvasFor(format);
   let start = 0;
   const body = {
     title: title ?? 'Flarent reel',
-    format: '9:16',
-    width: CANVAS.width,
-    height: CANVAS.height,
-    fps: CANVAS.fps,
+    format: format === 'landscape' ? '16:9' : '9:16',
+    width: canvas.width,
+    height: canvas.height,
+    fps: canvas.fps,
     estimatedDuration: round3(
       scenes.reduce((total, scene) => total + scene.duration, 0),
     ),

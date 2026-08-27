@@ -30,15 +30,25 @@ export const SceneRenderer: React.FC<{
   previous,
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   const fontsReady = useFontsReady();
+
+  /**
+   * The project's frame, read from Remotion's own config rather than threaded
+   * down as a prop. `calculateFlarentMetadata` already derives width/height
+   * from `format` for the whole composition, and `useVideoConfig` is that same
+   * value wherever it is called in the tree — in the editor's `<Player>` and in
+   * the render server's headless render alike — so this is the one place
+   * "which frame is active" needs to be asked.
+   */
+  const canvas = useMemo(() => ({ width, height, fps }), [width, height, fps]);
 
   // Measurement must happen against the real typeface, so the plan is built
   // only once the faces are live. The field still paints immediately.
   const plan = useMemo(
     () =>
-      fontsReady ? planScene(scene, durationInFrames, fps, palette) : null,
-    [scene, durationInFrames, fps, palette, fontsReady],
+      fontsReady ? planScene(scene, durationInFrames, fps, palette, canvas) : null,
+    [scene, durationInFrames, fps, palette, canvas, fontsReady],
   );
 
   /**
@@ -50,9 +60,9 @@ export const SceneRenderer: React.FC<{
   const previousPlan = useMemo(
     () =>
       fontsReady && previous
-        ? planScene(previous.scene, previous.durationInFrames, fps, palette)
+        ? planScene(previous.scene, previous.durationInFrames, fps, palette, canvas)
         : null,
-    [fontsReady, previous, fps, palette],
+    [fontsReady, previous, fps, palette, canvas],
   );
 
   const transition = useMemo(() => {
@@ -106,6 +116,7 @@ export const SceneRenderer: React.FC<{
             frame={frame}
             color={theme.ink}
             theme={theme}
+            canvas={canvas}
           />
         ) : null}
         {/*
@@ -133,6 +144,7 @@ export const SceneRenderer: React.FC<{
                */
               visual={resolveStyle(element.visual, theme)}
               transition={transition}
+              canvas={canvas}
             />
           );
         })}

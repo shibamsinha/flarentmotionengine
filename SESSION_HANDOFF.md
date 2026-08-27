@@ -528,3 +528,84 @@ That was wrong and the user rejected it. If an asset cannot be read from disk,
 
 The project title is an `<input>` in the top bar, edited in place. It flows into
 the auto-save, `serialiseProject`, and the Extract filename.
+
+---
+
+## 12. Landscape
+
+The frame (`CanvasFormat`, `'portrait' | 'landscape'`) is now a project-level
+choice next to the palette in the top bar, persisted, imported/exported, and
+threaded to the render server. `CANVAS` in `utils/timing.ts` is still exported
+and still means portrait — it is the *default*, not a global that changes.
+
+**The architectural decision that made this tractable, and must not be
+undone:** every sizing/layout function takes an explicit `canvas: VideoConfig`
+parameter defaulting to `CANVAS`. No function reads a mutable "current format"
+global. The reason: Remotion's `calculateMetadata` step (which decides
+width/height for a render) and the actual frame-rendering pass are not
+guaranteed to share JS module state — they can be different pages/realms in
+`renderMedia`. A global would work in the editor's `<Player>` (same page,
+same module graph) and be silently wrong in an export. This was verified by
+reasoning about Remotion's render pipeline, not by hitting the bug — treat it
+as a hazard already avoided, and if you're tempted to simplify the plumbing
+back to a global, don't.
+
+**Two different ways the value reaches consumers, and why:**
+- Inside the Remotion tree (planner, animation styles, `OverlayLayer`):
+  nothing is passed `format` as a prop. `calculateFlarentMetadata` resolves it
+  to `{width,height,fps}` once for the whole composition; every descendant
+  calls `useVideoConfig()` for the same value — identical in the editor
+  `<Player>` and the render server's headless export.
+- Outside the tree (`BoxStage`/`ImageStage`/`OverlayStage`, the drag overlays
+  the editor draws on top of the player): no Remotion context exists there, so
+  `App.tsx` computes `canvas = canvasFor(format)` once and passes it down
+  explicitly as a prop.
+
+**Files touched**, roughly in call-graph order: `utils/timing.ts`
+(`CANVAS_FORMATS`, `canvasFor`), `types/scene.ts` (`CanvasFormat`,
+`FlarentVideoProps.format`), `utils/typography.ts` (`sideMargin`/`kickerMin`/
+`kickerMax`/`rapidBaseSize` became functions; `fitToWidth`/`widthOf` cache keys
+now include `canvas.width` — a size legitimately differs by frame width even
+for the same text/weight), `utils/imageLayout.ts`, `utils/composition.ts`,
+`utils/plan.ts` (biggest: `planScene`'s new 5th param threads through both
+`planSingle` and `planComposed` and every helper under them),
+`utils/transition.ts` (`exitSpecFor`), `components/motion/Massive.tsx` +
+`Slide.tsx` (the two style components with frame-relative throws — `MotionProps`
+now carries `canvas`, required since `SceneRenderer` always supplies it),
+`components/motion/OverlayLayer.tsx`, `compositions/{SceneRenderer,
+FlarentVideo}.tsx`, then the editor layer (`App.tsx` owns `format` state;
+`VideoPreview`, `BoxStage`/`ImageStage`/`OverlayStage`, `ImageControls`,
+`SceneEditor`, `ExportBar`, `ExtractPanel` all take it), `utils/{persistence,
+importScript}.ts`, `server/render-server.mjs`.
+
+**`utils/importScript.ts`**: `format` accepts `PORTRAIT`/`LANDSCAPE` and
+synonyms (`VERTICAL`/`9:16`, `HORIZONTAL`/`WIDE`/`16:9`) via the same
+`vocab()`/`canon()` machinery as every other enum. Absent an explicit field,
+declared `width`/`height` infer it (`1920x1080` → landscape) rather than
+always warning "not 9:16" — verified both paths return zero issues on valid
+input and a clean error message on an invalid `format` string.
+
+### Verified
+
+- Rendered the same reel in both formats: landscape MP4 probes at exactly
+  1920×1080/30fps, 432 frames — identical frame count to its portrait sibling,
+  only the shape differs.
+- Measured the landscape output, not just watched it: GRADIENT and OVERSIZED
+  scenes bleed left/right on the 16:9 frame exactly as the composition system
+  intends, not stretched from portrait's numbers.
+- **Portrait regression check, done properly.** A raw before/after diff showed
+  up to 2px of centroid drift on a few frames — investigated rather than
+  waved off, by rendering identical code twice: same 1.5px/22-frame profile.
+  It's V4's SVG gradient/stroke filters adding their own rasterization jitter
+  (not present in the pre-V4 baseline this repo used to compare against), not
+  something this turn's canvas threading caused. **If you re-run this
+  regression check later, diff against a same-code baseline, not an old one
+  from before V4 — the noise floor moved when gradients/strokes did.**
+- Import/export round-trip: a `LANDSCAPE` document parses with zero issues,
+  serialises back to the same value, and a bad `format` string still errors
+  with the same message shape every other enum in the importer uses.
+
+### Next steps
+
+Nothing outstanding for this feature. Still open from earlier sessions:
+typeface, brand black, `git init`, Remotion licensing.

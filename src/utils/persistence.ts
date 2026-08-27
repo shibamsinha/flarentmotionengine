@@ -14,6 +14,7 @@ import type {
   Alignment,
   AnimationStyle,
   BackgroundName,
+  CanvasFormat,
   CompositionPreset,
   PaletteName,
   OverlayImage,
@@ -43,6 +44,8 @@ export type PersistedProject = {
   savedAt: number;
   scenes: Scene[];
   palette: PaletteName;
+  /** Portrait unless the project chose landscape. */
+  format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
   title: string | null;
@@ -262,6 +265,7 @@ export const loadProject = (): PersistedProject | null => {
       savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : Date.now(),
       scenes,
       palette: parsed.palette === 'ink' ? 'ink' : 'forest',
+      format: parsed.format === 'landscape' ? 'landscape' : 'portrait',
       fields,
       overlay: sanitiseOverlay(parsed.overlay),
       title: typeof parsed.title === 'string' ? parsed.title : null,

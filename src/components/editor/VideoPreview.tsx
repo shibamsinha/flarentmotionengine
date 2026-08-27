@@ -1,23 +1,25 @@
 import React, { useEffect, useMemo } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
 import { FlarentVideo } from '../../compositions/FlarentVideo';
-import type { OverlayImage, PaletteName, Scene } from '../../types/scene';
+import type { CanvasFormat, OverlayImage, PaletteName, Scene } from '../../types/scene';
 import type { FieldOverrides } from '../../utils/typography';
-import { CANVAS, totalFrames } from '../../utils/timing';
+import { CANVAS, canvasFor, totalFrames } from '../../utils/timing';
 
 export const VideoPreview: React.FC<{
   scenes: Scene[];
   palette: PaletteName;
+  format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
   playerRef: React.RefObject<PlayerRef | null>;
   onFrame: (frame: number) => void;
   onPlayingChange: (playing: boolean) => void;
-}> = ({ scenes, palette, fields, overlay, playerRef, onFrame, onPlayingChange }) => {
+}> = ({ scenes, palette, format, fields, overlay, playerRef, onFrame, onPlayingChange }) => {
   const durationInFrames = totalFrames(scenes, CANVAS.fps);
+  const canvas = useMemo(() => canvasFor(format), [format]);
   const inputProps = useMemo(
-    () => ({ scenes, palette, fields, ...(overlay ? { overlay } : {}) }),
-    [scenes, palette, fields, overlay],
+    () => ({ scenes, palette, format, fields, ...(overlay ? { overlay } : {}) }),
+    [scenes, palette, format, fields, overlay],
   );
 
   useEffect(() => {
@@ -48,9 +50,9 @@ export const VideoPreview: React.FC<{
         component={FlarentVideo}
         inputProps={inputProps}
         durationInFrames={durationInFrames}
-        compositionWidth={CANVAS.width}
-        compositionHeight={CANVAS.height}
-        fps={CANVAS.fps}
+        compositionWidth={canvas.width}
+        compositionHeight={canvas.height}
+        fps={canvas.fps}
         style={{ width: '100%', height: '100%' }}
         loop
         acknowledgeRemotionLicense
