@@ -1,0 +1,39 @@
+{
+  "name": "flarent-motion-engine",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Flarent Motion Engine — a scene-based kinetic typography engine built on Remotion.",
+  "scripts": {
+    "dev": "concurrently -k -n APP,RENDER -c cyan,magenta \"vite\" \"node server/render-server.mjs\"",
+    "dev:app": "vite",
+    "dev:render": "node server/render-server.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "studio": "remotion studio src/remotion/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@remotion/bundler": "^4.0.514",
+    "@remotion/cli": "^4.0.514",
+    "@remotion/fonts": "^4.0.514",
+    "@remotion/layout-utils": "^4.0.514",
+    "@remotion/player": "^4.0.514",
+    "@remotion/renderer": "^4.0.514",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "^4.0.514"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

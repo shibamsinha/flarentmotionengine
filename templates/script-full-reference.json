@@ -1,0 +1,85 @@
+{
+  "title": "Every field the importer reads",
+  "format": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "estimatedDuration": 3.4,
+  "backgroundPalette": {
+    "green": "#13581D",
+    "cream": "#EEEEEE",
+    "black": "#0F0F0F"
+  },
+  "scenes": [
+    {
+      "id": "scene-01",
+      "start": 0,
+      "duration": 1,
+      "text": "EVERY OPTION SHOWN",
+      "emphasis": ["OPTION"],
+      "animation": "PUNCH",
+      "direction": "CENTER",
+      "alignment": "CENTER",
+      "background": "GREEN",
+      "case": "as-typed",
+      "scale": 1,
+      "flipBackground": false,
+      "visualNote": "All optional fields present with their default values."
+    },
+    {
+      "id": "scene-02",
+      "start": 1,
+      "duration": 0.8,
+      "text": "line one\nline two\nHERO LINE",
+      "emphasis": ["HERO LINE"],
+      "animation": "STACK",
+      "direction": "BOTTOM",
+      "alignment": "LEFT",
+      "background": "BLACK",
+      "case": "lower",
+      "scale": 0.9,
+      "flipBackground": true,
+      "visualNote": "Newlines force line breaks. Multi-word emphasis is split into words."
+    },
+    {
+      "id": "scene-03",
+      "start": 1.8,
+      "duration": 0.8,
+      "text": "OVER A PICTURE",
+      "emphasis": ["PICTURE"],
+      "animation": "SLIDE",
+      "direction": "LEFT",
+      "alignment": "CENTER",
+      "background": "GREEN",
+      "case": "upper",
+      "image": {
+        "src": "uploads/your-image.jpg",
+        "placement": "full",
+        "side": "top",
+        "size": 0.42,
+        "scrim": 0.45,
+        "focusX": 0.5,
+        "focusY": 0.35
+      },
+      "visualNote": "placement full | panel | split. size and side apply to panel/split; scrim to full."
+    },
+    {
+      "id": "scene-04",
+      "start": 2.6,
+      "duration": 0.8,
+      "text": "PANEL ABOVE THE TYPE",
+      "emphasis": ["PANEL"],
+      "animation": "PUNCH",
+      "direction": "CENTER",
+      "alignment": "RIGHT",
+      "background": "CREAM",
+      "image": {
+        "src": "https://example.com/photo.jpg",
+        "placement": "panel",
+        "side": "top",
+        "size": 0.45
+      },
+      "visualNote": "An absolute URL works but needs the network at render time; uploads are safer."
+    }
+  ]
+}

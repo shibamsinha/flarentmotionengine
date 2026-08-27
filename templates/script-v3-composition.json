@@ -1,0 +1,61 @@
+{
+  "title": "V3 composition template",
+  "format": "9:16",
+  "fps": 30,
+  "scenes": [
+    {
+      "duration": 2.0,
+      "composition": "SPLIT",
+      "background": "GREEN",
+      "animation": "PUNCH",
+      "case": "as-typed",
+      "elements": [
+        {
+          "text": "You don't need",
+          "role": "SECONDARY",
+          "size": "MEDIUM",
+          "position": "TOP_LEFT",
+          "animation": "SLIDE"
+        },
+        {
+          "text": "MORE",
+          "role": "EMPHASIS",
+          "size": "OVERSIZED",
+          "position": "CENTER",
+          "animation": "MASSIVE"
+        },
+        {
+          "text": "followers.",
+          "role": "SUPPORT",
+          "size": "SMALL",
+          "position": "BOTTOM_RIGHT",
+          "animation": "PUNCH"
+        }
+      ],
+      "visualNote": "Three roles, three corners. The frame reads as a poster when paused."
+    },
+    {
+      "duration": 2.4,
+      "composition": "OVERSIZED_CENTER",
+      "background": "GREEN",
+      "animation": "MASSIVE",
+      "case": "as-typed",
+      "elements": [
+        {
+          "text": "YOU NEED",
+          "role": "SECONDARY",
+          "position": "TOP_LEFT",
+          "animation": "SLIDE",
+          "from": "OFFSCREEN_LEFT"
+        },
+        {
+          "text": "CUSTOMERS.",
+          "role": "EMPHASIS",
+          "size": "OVERSIZED",
+          "delay": 0.1
+        }
+      ],
+      "visualNote": "Close on an oversized word cropped by the frame; the setup line rides in from offscreen."
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+# Netlify — the editor only.
+#
+# What deploys: the Vite app. Scene editing, the preview player, every V2/V3/V4
+# feature, canvas drag/resize, localStorage auto-save, Import JSON, Extract JSON.
+#
+# What does NOT: `server/render-server.mjs`. Export MP4 and image upload both
+# call it, and it cannot run here — see the README's "Hosting" section. Netlify
+# hosts the front end; the renderer needs a long-running host.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Vite 7 requires Node 20+.
+  NODE_VERSION = "20"
+
+# The render server's routes. Listed first so the SPA catch-all below does not
+# swallow them: without this an Export MP4 click receives index.html with a 200
+# and fails while parsing HTML as JSON, which is a much more confusing error
+# than a plain 404.
+[[redirects]]
+  from = "/api/*"
+  to = "/index.html"
+  status = 404
+
+[[redirects]]
+  from = "/out/*"
+  to = "/index.html"
+  status = 404
+
+# Single page, no router — but a stray deep link should still land on the app.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Vite content-hashes these, so they can be cached forever.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

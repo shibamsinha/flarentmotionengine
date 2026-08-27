@@ -1,0 +1,76 @@
+{
+  "title": "Untitled reel",
+  "format": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "estimatedDuration": 4.2,
+  "backgroundPalette": {
+    "green": "#13581D",
+    "cream": "#EEEEEE"
+  },
+  "scenes": [
+    {
+      "id": "scene-01",
+      "start": 0,
+      "duration": 0.8,
+      "text": "THE ONLY",
+      "emphasis": ["ONLY"],
+      "animation": "SLIDE",
+      "direction": "BOTTOM",
+      "alignment": "CENTER",
+      "background": "CREAM",
+      "visualNote": "Opening. Support word reads first, hero lands under it."
+    },
+    {
+      "id": "scene-02",
+      "start": 0.8,
+      "duration": 0.7,
+      "text": "COMPARISON WORTH MAKING",
+      "emphasis": ["COMPARISON"],
+      "animation": "PUNCH",
+      "direction": "CENTER",
+      "alignment": "CENTER",
+      "background": "GREEN",
+      "visualNote": "Hero first, qualifier trails a beat below-right."
+    },
+    {
+      "id": "scene-03",
+      "start": 1.5,
+      "duration": 0.6,
+      "text": "WERE",
+      "emphasis": ["WERE"],
+      "animation": "MASSIVE",
+      "direction": "CENTER",
+      "alignment": "CENTER",
+      "background": "GREEN",
+      "visualNote": "Short word, so it crops past the frame edge."
+    },
+    {
+      "id": "scene-04",
+      "start": 2.1,
+      "duration": 1.2,
+      "text": "AI. DESIGN. WEBSITES. CONTENT.",
+      "emphasis": [],
+      "animation": "RAPID",
+      "direction": "CENTER",
+      "alignment": "CENTER",
+      "background": "CREAM",
+      "flipBackground": true,
+      "visualNote": "Staccato list. Splits on the full stops, field cuts each beat."
+    },
+    {
+      "id": "scene-05",
+      "start": 3.3,
+      "duration": 0.9,
+      "text": "MEANT TO RUN",
+      "emphasis": ["RUN"],
+      "animation": "STACK",
+      "direction": "BOTTOM",
+      "alignment": "CENTER",
+      "background": "GREEN",
+      "flipBackground": true,
+      "visualNote": "Builds word by word into a pre-solved layout."
+    }
+  ]
+}
