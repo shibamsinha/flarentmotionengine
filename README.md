@@ -1,4 +1,4 @@
-# Flarent Motion Engine — V4
+# Flarent Motion Engine — V5
 
 A scene-based kinetic typography engine. You write text, break it into scenes,
 give each scene an animation style and a length, and the engine renders a
@@ -10,6 +10,8 @@ easing. V3 is about **how type exists on the screen**: roles, hierarchy,
 semantic sizes and positions, composition presets, and typography that runs past
 the frame on purpose. V4 is about **how type looks** — solid, outline, gradient
 and split treatments chosen per scene, entirely independently of how it moves.
+V5 is about **how you get in**: a branded launch sequence and a start screen that
+asks what you want to make before dropping you into an editor.
 
 The test V3 is built against is the *pause test* — stop the reel anywhere and the
 frame should read as a designed composition. V4 adds a second: the same
@@ -33,6 +35,82 @@ lsof -ti:5173 -ti:5174 | xargs kill
 ```
 
 Or move both: `FLARENT_APP_PORT=5273 FLARENT_RENDER_PORT=5274 npm run dev`.
+
+---
+
+## V5 — starting a project
+
+Opening the app no longer drops you straight into the editor:
+
+```
+load / reload  →  splash  →  start screen  →  editor
+```
+
+**The splash** is the approved animation from `reference/splash.mp4`, rebuilt as
+UI rather than played back as a video. The mark holds in the centre, travels
+left, and the wordmark wipes out from behind it. It runs 2.5s and hands over on
+a 180ms fade.
+
+Everything about its motion was measured off that file rather than estimated —
+the two green capsules separated from the wordmark by hue, the wordmark by
+neutrality, both tracked frame by frame — and the timing fitted by grid search
+over cubic-bezier space:
+
+| | start | length | curve | fit |
+|---|---|---|---|---|
+| mark slide | f9 | 31f | `cubic-bezier(0.25, 0.9, 0.5, 1)` | rms **0.70px** over a 400px travel |
+| wordmark wipe | f12 | 33f | `cubic-bezier(0.25, 1.1, 0.3, 1)` | rms **4.10px** over 784px |
+
+Those live in `src/utils/splashMotion.ts` as ratios of the lockup's width, so
+the sequence is identical at any window size. Neither curve is one of the house
+curves in `easing.ts` — `EASE.settle` fits the mark slide sixteen times worse —
+because the splash was authored elsewhere and is not obliged to share the reel's
+easing. The animation is plain CSS; nothing ticks in JS.
+
+The wordmark is an **image**, not text, and deliberately so: the lockup reads
+"Flarent Motion Engine" but `public/brand/logo.png` stops at "Flarent Motion",
+and the brand typeface has never been supplied. `scripts/splash-wordmark.mjs`
+cuts it out of the approved video instead — averaging the 30 identical settled
+frames to cancel H.264 ringing, then taking alpha from luminance. If the
+typeface ever arrives, delete the asset and set it as live text; nothing else
+changes.
+
+**The start screen** offers exactly three ways in, and all three produce the
+same thing:
+
+```
+scratch  ─┐
+JSON     ─┼─→  Project  →  editor
+template ─┘
+```
+
+`src/utils/project.ts` is the only place a project is created
+(`createBlankProject`, `createProjectFromJSON`, `createProjectFromTemplate`).
+The editor receives a `Project` and cannot tell which door it came through —
+that separation is the point, and it is what keeps the start flow from leaking
+conditionals into the editor.
+
+- **Start from scratch** is one empty scene, not zero: composition length is the
+  sum of its scenes, and Remotion cannot mount a zero-frame composition.
+- **Import JSON** opens the file picker straight from the card and runs the same
+  `parseFlarentScript` the editor's Import panel uses — one validator, one
+  definition of a valid project. A bad file gets a sentence, not a stack trace.
+- **Start from a template** browses `PRESETS` — the existing Reference Reels,
+  read rather than copied. There is no second template data structure. Each
+  preset's `build()` mints fresh scenes and ids on every call, so the project
+  you get shares no object with the template and the original cannot be mutated.
+
+A reload always returns to the start screen and never silently reopens the last
+project. That does not mean the work is gone: the auto-save is read once at
+startup, before the editor can overwrite it, and offered back as a quiet
+"Resume last session" line under the three cards. Without it the two rules the
+brief sets — always start here, never destroy saved state — would strand an
+auto-saved reel where nothing could reach it.
+
+**The editor is unchanged.** V5 moved it out of `App.tsx` into `Editor.tsx`;
+its 243-line render tree is byte-identical and the only logic difference is that
+seven state initialisers now read a `Project` prop instead of calling
+`loadProject()` at module scope.
 
 ---
 

@@ -1460,3 +1460,459 @@ select.preset {
   text-transform: uppercase;
   outline: none;
 }
+
+/* ============================================================ V5 · startup */
+
+/* The launch sequence and the start screen. Both sit on the same --bg as the
+   editor, which is what lets the splash hand over without a visible step:
+   only the lockup fades, never the field behind it. */
+
+/* ----------------------------------------------------------------- splash */
+
+/*
+   Geometry is driven entirely by --lockup. The three ratios and the two
+   beziers come from `utils/splashMotion.ts`, which measured them off the
+   approved animation — see that file before changing any number here.
+
+   The mark's travel is not a measured constant: the mark starts centred in the
+   frame and ends at the lockup's left edge, and the lockup is itself centred,
+   so the distance is exactly half the leftover width. That the measurement
+   (400px) and the derivation ((916-116)/2) agree is the check that the layout
+   is being read correctly.
+*/
+.splash {
+  --lockup: min(440px, 62vw);
+  --mark: calc(var(--lockup) * var(--mark-ratio));
+  --gap: calc(var(--lockup) * var(--gap-ratio));
+  --word: calc(var(--lockup) * var(--word-ratio));
+  --travel: calc((var(--lockup) - var(--mark)) / 2);
+
+  display: grid;
+  place-items: center;
+  height: 100%;
+  background: var(--bg);
+}
+
+.splash-lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  width: var(--lockup);
+  /* Only the lockup fades. The field stays, so the start screen arrives on the
+     same background rather than through a flash. */
+  animation: splash-out var(--fade-duration) linear var(--fade-start) both;
+}
+
+.splash-mark {
+  width: var(--mark);
+  height: auto;
+  display: block;
+  flex: none;
+  transform: translateX(var(--travel));
+  animation: splash-mark var(--mark-duration) var(--mark-ease) var(--mark-start)
+    both;
+}
+
+/* Two nested clips because the wordmark's edges move on different curves with
+   different delays, and one clip-path cannot carry two timings. Outer: the left
+   edge, pinned to the mark's trailing edge so the word appears to emerge from
+   behind it. Inner: the wipe. */
+.splash-word-clip {
+  width: var(--word);
+  flex: none;
+  clip-path: inset(0 0 0 calc(var(--travel) - var(--gap)));
+  animation: splash-uncover var(--mark-duration) var(--mark-ease)
+    var(--mark-start) both;
+}
+
+.splash-word {
+  display: block;
+  width: 100%;
+  height: auto;
+  clip-path: inset(0 100% 0 0);
+  animation: splash-wipe var(--word-duration) var(--word-ease) var(--word-start)
+    both;
+}
+
+@keyframes splash-mark {
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Ends at a negative inset, not 0: at rest the mark's trailing edge sits one
+   --gap short of the wordmark, so clipping to 0 would shave that gap off. */
+@keyframes splash-uncover {
+  to {
+    clip-path: inset(0 0 0 calc(-1 * var(--gap)));
+  }
+}
+
+@keyframes splash-wipe {
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes splash-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Asked for stillness: show the settled lockup and let the timeout move on. */
+@media (prefers-reduced-motion: reduce) {
+  .splash-mark,
+  .splash-word-clip,
+  .splash-word,
+  .splash-lockup {
+    animation: none;
+    transform: none;
+    clip-path: none;
+  }
+}
+
+/* ----------------------------------------------------------- start screen */
+
+.start {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+/*
+   Centred rather than pinned to the top: this screen holds one decision and
+   nothing below it, so top-aligning leaves the choice floating above a large
+   empty field. The template browser overrides this — a grid of fourteen does
+   want to start at the top and scroll.
+*/
+.start-pane {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 64px 32px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.start-pane.is-busy {
+  align-items: center;
+}
+
+/* A grid of fourteen wants to start at the top and scroll. */
+.start-pane.is-browser {
+  justify-content: flex-start;
+}
+
+.start-busy {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 0;
+}
+
+.start-head {
+  animation: start-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Mark + wordmark at the lockup's own proportions — the same relationship the
+   splash settles into, so the eye recognises it as the thing that just
+   animated rather than as a different logo. */
+.start-logo {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 44px;
+  opacity: 0.9;
+}
+
+.start-logo-mark {
+  height: 19px;
+  width: auto;
+  display: block;
+}
+
+.start-logo-word {
+  height: 14px;
+  width: auto;
+  display: block;
+}
+
+.start-title {
+  font-size: clamp(28px, 3.4vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.start-sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+
+.start-back {
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 0;
+  margin-bottom: 28px;
+  display: block;
+}
+
+.start-back:hover {
+  color: var(--text);
+}
+
+.start-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 44px;
+}
+
+@media (max-width: 900px) {
+  .start-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+   Typography does the work: a rule, a name, a sentence, and the action. No
+   icon, no illustration, no shadow. The hover state is a 2px lift and a
+   contrast change — enough to confirm the target, not enough to bounce.
+*/
+.start-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  text-align: left;
+  padding: 26px 24px 22px;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  border-radius: 4px;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    transform 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: start-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* Cards follow the heading, one after another. */
+  animation-delay: calc(90ms + var(--i) * 60ms);
+}
+
+.start-card:hover,
+.start-card:focus-visible {
+  border-color: var(--line-strong);
+  background: #171a17;
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.start-card-kicker {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.start-card-body {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  /* Pushes the action to the card's foot so all three actions line up however
+     long the descriptions are. */
+  flex: 1;
+}
+
+.start-card-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--accent);
+}
+
+.start-arrow {
+  font-style: normal;
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.start-card:hover .start-arrow,
+.start-card:focus-visible .start-arrow {
+  transform: translateX(3px);
+}
+
+/* Secondary by construction: a link, not a fourth card. It exists so a reload
+   cannot strand the auto-save — see StartScreen.tsx. */
+.start-resume {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 28px 0 0;
+  animation: start-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
+}
+
+.linkish {
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
+}
+
+.linkish:hover {
+  text-decoration-color: var(--accent);
+}
+
+.start-resume-note {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.start-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+/* The parser's own words, kept out of the headline and offered underneath. */
+.start-detail {
+  margin: 24px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 2px solid #7a3b3b;
+  background: var(--bg-raised);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+@keyframes start-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .start-head,
+  .start-card,
+  .start-resume {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------- template browser */
+
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 14px;
+  margin-top: 36px;
+}
+
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  border-radius: 4px;
+  overflow: hidden;
+  transition:
+    border-color 140ms ease,
+    transform 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tpl-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+.tpl-card.is-selected {
+  border-color: var(--accent);
+  transform: none;
+}
+
+.tpl-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  text-align: left;
+  padding: 0;
+}
+
+/*
+   Five opening scenes at the reel's real 9:16, so the cut rhythm — how often
+   the field flips — is legible before anything is loaded.
+*/
+.tpl-poster {
+  display: flex;
+  gap: 2px;
+  padding: 10px 10px 0;
+}
+
+.tpl-frame {
+  flex: 1;
+  aspect-ratio: 9 / 16;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.tpl-frame-text {
+  font-size: 7px;
+  line-height: 1.15;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: -0.01em;
+  /* Two lines maximum; a long opening line must not stretch the frame. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.tpl-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 12px 0;
+}
+
+.tpl-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tpl-note {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.tpl-stats {
+  padding: 8px 12px 12px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.tpl-use {
+  margin: 0 10px 10px;
+}

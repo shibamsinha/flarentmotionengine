@@ -19,6 +19,14 @@ import React from 'react';
 export const LOGO_MARK = '/brand/logo-mark.png';
 /** Mark + wordmark. Aspect 5.744. */
 export const LOGO_LOCKUP = '/brand/logo-lockup.png';
+/**
+ * The wordmark alone, reading "Flarent Motion Engine" — one word longer than
+ * the brand lockup above, which stops at "Flarent Motion". Cut from the
+ * approved splash animation by `scripts/splash-wordmark.mjs` because the brand
+ * typeface has never been supplied; see that script for why. White with alpha,
+ * so it takes its colour from whatever it sits on. Aspect 9.116.
+ */
+export const SPLASH_WORDMARK = '/brand/splash-wordmark.png';
 
 export const Logo: React.FC = () => (
   <div className="logo">

@@ -15,10 +15,12 @@ sessions took it from the V2 baseline (motion: transitions, blur, easing)
 through **V3** (composition: roles, hierarchy, semantic sizing/positioning,
 oversized/clipped type), **V4** (independent visual styles — solid / outline /
 gradient / split, orthogonal to animation), editor polish (static overlay,
-Extract JSON, the real brand logo, an editable project title), and
-**landscape** as a second project-level output format. Long-term target:
-`script → AI → Scene[] → engine → MP4`, with the import/export JSON schema
-(`templates/SCHEMA.md`) as the seam a future AI Motion Director plugs into.
+Extract JSON, the real brand logo, an editable project title),
+**landscape** as a second project-level output format, and **V5** (the
+splash + start-screen entry flow, and one project-initialisation seam behind
+it). Long-term target: `script → AI → Scene[] → engine → MP4`, with the
+import/export JSON schema (`templates/SCHEMA.md`) as the seam a future AI
+Motion Director plugs into.
 
 ---
 
@@ -78,11 +80,33 @@ of truth; `scripts/brand-crop.mjs` regenerates the two on-screen crops
 (`logo-lockup.png`, `logo-mark.png`) from it. **Never redraw the logo from
 memory again — if the asset is missing, ask for the file.**
 
-**Branch before committing to `main`.** Standing practice, not user-specified:
-this repo already had one commit (`114c380`, all of V1–V4) on `main` with a
-real GitHub remote before this arc started. All of this arc's work landed on
-branch `landscape-format` (commit `53e36c9`), not on `main`, and was not
-pushed.
+**V5's editor move was a pure extraction, and that is checkable.** The editor
+left `App.tsx` for `Editor.tsx` so `App` could become the start-flow router.
+Its render tree is byte-identical (verified by diffing the 243 JSX lines against
+`git show HEAD:src/App.tsx`) and the only logic change is seven state
+initialisers reading an `initial: Project` prop instead of a module-scope
+`loadProject()`. If you ever need to prove the editor is untouched again, that
+diff is the check — not a read-through.
+
+**One project constructor, three doors.** `utils/project.ts` is the only place a
+`Project` is made. The editor takes one and cannot tell whether it came from
+scratch, JSON or a template. Don't add a fourth branch inside the editor; add a
+function there instead.
+
+**Templates are `PRESETS`, read not copied.** The Reference Reels browser reads
+`data/presets.ts` directly. There is deliberately no second template structure
+and no preview assets — posters are drawn from each reel's own fields via
+`themeFor()`, the same function the renderer uses, so a poster cannot drift from
+the reel. Every `build()` mints fresh scenes and ids, which is what makes the
+"editable copy, original untouched" guarantee structural rather than defensive.
+
+**Branch, then fast-forward — no PRs.** This repo has one committer. Work is
+built on a topic branch (this arc used `landscape-format`), then merged to
+`main` with `--ff-only` and pushed, and the topic branch is deleted. Linear
+history, no merge commits, `main` is the only long-lived branch. The user has
+said plainly that they don't read git; keeping history flat is a deliberate
+kindness to that, not an aesthetic preference. Don't introduce PR ceremony or
+`--no-ff` merges without asking.
 
 ---
 
@@ -94,20 +118,49 @@ measuring pixels** (ffprobe dimensions/frame counts, alpha-weighted centroid
 diffs, ink-colour histograms) — not by reading the preview and assuming.
 Nothing is known-broken or half-finished.
 
-**Git**: on branch `landscape-format`, working tree clean, one commit ahead of
-`main` (which still points at `114c380`). `origin/main` exists
-(`github.com/shibamsinha/flarentmotionengine.git`) but **nothing from this
-branch has been pushed** — the user asked to commit, not push or merge.
+**V5 was verified by driving the real app, not by reading the code.** All three
+start paths were run end-to-end in the browser: scratch → 1 scene / 24 frames,
+a real JSON import → title, 2 scenes, composition and all three elements with
+roles/sizes/positions intact, and a template → "V4 reel" / 9 scenes / 432
+frames. An invalid file produced the friendly error rather than a stack trace,
+and **MP4 export still renders** (1080×1920 H.264, 24 frames, verified with
+ffprobe after the change). First paint with a saved project present is the
+splash, with the editor not mounted at all — that is the no-flash guarantee.
 
-**Hosting**: not addressed yet — the user's next question, interrupted to
-request this handoff instead. Key fact for that conversation: this is **two
+**Git**: V5 is uncommitted at time of writing. Before it, `main` was clean and
+in sync with `origin/main` at `e19f8ba` — the whole V3 → V4 →
+overlay/extract/logo → landscape arc, pushed to
+`github.com/shibamsinha/flarentmotionengine.git`. `landscape-format` was
+fast-forwarded in and deleted; `main` is the only branch.
+
+**Hosting**: **deliberately deferred.** The user was asked and said they don't
+want to host it now but will later — so this is a decision on hold, not an
+open task. Nothing here is blocked on it.
+
+The constraint that will shape that conversation when it happens: this is **two
 processes**, not one. `npm run dev` runs a Vite dev server (the editor UI,
 port 5173) *and* `server/render-server.mjs` (a Node process that drives
 `@remotion/renderer` + headless Chrome to produce MP4s, port 5174) via
-`concurrently`. A static host (Netlify/Vercel/etc.) can serve the built editor
-UI, but MP4 export needs a long-lived Node process with a real Chrome binary
-available — not a typical serverless fit. That split is the first thing to
-raise with the user before recommending a host.
+`concurrently`. A static host can serve the built editor UI, but MP4 export
+needs a long-lived Node process with a real Chrome binary — not a serverless
+fit. Four specifics already established, so they don't need rediscovering:
+
+- `netlify.toml` **already exists and is committed** (since `114c380`). It
+  deploys the editor *only*, and deliberately 404s `/api/*` and `/out/*` so a
+  failed Export reads as a clean 404 rather than "unexpected token < in JSON."
+- The editor calls `/api/render`, `/api/render/:id` and `/api/upload` as
+  **relative paths** (`ExportBar.tsx`, `ImageControls.tsx`,
+  `OverlayControls.tsx`), resolved in dev only by Vite's proxy
+  (`vite.config.ts`). Any split deployment must either put the renderer on the
+  same origin or make that base URL configurable in those three places.
+- `out/` and `public/uploads/` are **local disk**. An ephemeral filesystem
+  loses both on restart; a hosted renderer needs a volume or object storage.
+- The render server has **no auth**. Public hosting means anyone can queue
+  `crf: 17` / `x264Preset: 'slow'` renders on your CPU.
+
+Recommendation on record (not yet acted on): one always-on container serving
+both `dist/` and the API on a single origin, which makes the relative-path and
+CORS problems vanish for free.
 
 **Dev server is not persistent across tool-call turns in this environment** —
 it stopped at least once mid-arc and had to be restarted manually for browser
@@ -202,28 +255,56 @@ or just try to load `localhost:5173` before debugging "why is nothing loading."
   Extract JSON, logo, landscape. Read these before re-explaining any of the
   above from scratch.
 
+**V5 — startup flow** (all additive; nothing in the renderer or the editor was
+touched, see §2)
+- `src/App.tsx` — reduced to the phase router (`splash → start → editor`).
+- `src/Editor.tsx` — **new**. The former `App` body, extracted verbatim.
+- `src/types/project.ts`, `src/utils/project.ts` — **new**. The `Project` type
+  and the only three ways to make one.
+- `src/utils/splashMotion.ts` — **new**. Measured ratios, fitted beziers and
+  timings for the splash. The measurement method is written down in the file.
+- `src/components/start/{Splash,StartScreen,TemplateBrowser}.tsx` — **new**.
+- `src/components/editor/Logo.tsx` — one added export (`SPLASH_WORDMARK`).
+- `src/index.css` — V5 block appended; no existing rule was modified.
+- `scripts/splash-wordmark.mjs`, `public/brand/splash-wordmark.png`,
+  `reference/splash.mp4` — **new**. The wordmark asset and the source it is cut
+  from.
+
 ---
 
 ## 5. Next steps (in order)
 
-1. **Hosting** — the question this handoff interrupted. Needs a real
-   conversation with the user: split hosting (static UI + a persistent render
-   server), a Remotion Lambda/Cloud Run-style serverless render path, or
-   something else — see §3 for the constraint that shapes the answer.
-2. Decide whether/when to push `landscape-format` to `origin` and merge to
-   `main`. Currently local-only.
-3. Typeface + brand black hex — flagged as outstanding since the V1 handoff,
+1. **The README has no "Hosting" section**, but `netlify.toml`'s header comment
+   tells the reader to go read one. Smallest real task outstanding: either
+   write that section (§3 has the material) or drop the dangling reference.
+2. Typeface + brand black hex — flagged as outstanding since the V1 handoff,
    never resolved. Needs the actual values/files from the user.
-4. Watch the V4/landscape reels and tune taste dials — gradient colours,
+3. Watch the V4/landscape reels and tune taste dials — gradient colours,
    outline stroke-weight default, `ROLE_*` constants, composition `gap`s.
    Plumbing is done; these are opinions, not architecture.
-5. The AI layer itself. `templates/SCHEMA.md` is AI-ready (V4 + landscape
+4. The AI layer itself. `templates/SCHEMA.md` is AI-ready (V4 + landscape
    prompt blocks included); nothing has been built against it yet.
+5. Hosting — **deferred by the user, not forgotten.** Don't re-open it
+   unprompted; §3 holds everything needed when they do.
 
 ---
 
 ## 6. Gotchas
 
+- **`ffmpeg`'s `cropdetect` lies about small bright objects.** Measuring the
+  splash with it gave the mark as 76×104 (aspect 0.73) and sent an hour into
+  "why doesn't the logo asset match?". NumPy on the extracted PNGs gave the true
+  116×116 (aspect 1.000), which matches `logo.png`'s own 1.039 and meant the
+  existing asset was correct all along. For ink geometry, decode frames and
+  threshold them yourself; `cropdetect` is for finding letterbox bars.
+- **The splash wordmark is a bitmap because the brand typeface is still
+  missing** (§5 item 2). It reads "Flarent Motion Engine"; `logo.png` stops at
+  "Flarent Motion". Don't "improve" it by setting the text in Inter — that puts
+  a foreign letterform directly against the real logo. When the font arrives,
+  delete `public/brand/splash-wordmark.png` and set live text.
+- **`prefers-reduced-motion` skips the splash rather than slowing it** (600ms to
+  the start screen). Holding a static logo for the full 2.5s is a worse answer
+  than getting out of the way; if you change this, change it in that direction.
 - **This file (SESSION_HANDOFF.md) can go stale** — an earlier version of it
   claimed "git init" was still outstanding when the repo already had a commit
   and a GitHub remote. Verify repo/environment state directly (`git status`,
