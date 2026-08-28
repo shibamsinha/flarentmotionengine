@@ -306,6 +306,15 @@ touched, see §2)
 
 ## 6. Gotchas
 
+- **The Browser pane does not run `requestAnimationFrame` unless it is
+  displayed.** Measured: 0 rAF callbacks in 700ms with `document.hidden === false`
+  and `visibilityState === "visible"`, and screenshots fail with "the Browser
+  pane is not displayed, so the page is not compositing frames". This produced a
+  confidently wrong conclusion twice — that flarent.online's hero background was
+  static, and then that the port of it was too. **Canvas contents not changing
+  proves nothing in this environment.** Verify animation logic in Node instead
+  (see the `Particle` export in `ParticleField.tsx`, which exists for exactly
+  that), or ask the user to display the pane.
 - **`ffmpeg`'s `cropdetect` lies about small bright objects.** Measuring the
   splash with it gave the mark as 76×104 (aspect 0.73) and sent an hour into
   "why doesn't the logo asset match?". NumPy on the extracted PNGs gave the true

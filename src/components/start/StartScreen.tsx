@@ -32,6 +32,7 @@ import {
 } from '../../utils/project';
 import { LOGO_MARK, SPLASH_WORDMARK } from '../editor/Logo';
 import { TemplateBrowser } from './TemplateBrowser';
+import { ParticleField } from './ParticleField';
 
 /**
  * A failure the user can act on. Raw parser messages are kept out of the
@@ -53,6 +54,30 @@ type View =
   | { kind: 'import'; text: string; failure: Failure | null }
   | { kind: 'busy'; label: string }
   | { kind: 'failed'; failure: Failure };
+
+/**
+ * The shell every start-flow view sits in.
+ *
+ * Three layers, back to front: a glow, the particle field, and a fade into the
+ * bottom edge — the same recipe flarent.online uses behind its hero, so the two
+ * surfaces read as one product.
+ *
+ * The backdrop is a sibling of the scrolling element rather than inside it. If
+ * it lived in the scroller, `absolute inset-0` would pin it to the scroll
+ * origin and the field would slide away as soon as the template grid scrolled.
+ * `ParticleField` measures its own parent, so `.start-backdrop` is what defines
+ * the field's bounds.
+ */
+const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="start">
+    <div className="start-backdrop" aria-hidden>
+      <span className="start-glow" />
+      <ParticleField />
+      <span className="start-fade" />
+    </div>
+    <div className="start-scroll">{children}</div>
+  </div>
+);
 
 const CARDS = [
   {
@@ -206,24 +231,24 @@ export const StartScreen: React.FC<{
 
   if (view.kind === 'templates') {
     return (
-      <div className="start">
+      <Shell>
         {picker}
         <TemplateBrowser
           onUse={useTemplate}
           onBack={() => setView({ kind: 'choose' })}
         />
-      </div>
+      </Shell>
     );
   }
 
   if (view.kind === 'busy') {
     return (
-      <div className="start">
+      <Shell>
         {picker}
         <div className="start-pane is-busy">
           <p className="start-busy">{view.label}</p>
         </div>
-      </div>
+      </Shell>
     );
   }
 
@@ -235,7 +260,7 @@ export const StartScreen: React.FC<{
       setView({ kind: 'import', text: next, failure: null });
 
     return (
-      <div className="start">
+      <Shell>
         {picker}
         <div className="start-pane">
           <div className="start-head">
@@ -311,14 +336,14 @@ export const StartScreen: React.FC<{
             </div>
           </div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
   if (view.kind === 'failed') {
     const { failure } = view;
     return (
-      <div className="start">
+      <Shell>
         {picker}
         <div className="start-pane">
           <div className="start-head">
@@ -347,12 +372,12 @@ export const StartScreen: React.FC<{
             </button>
           </div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
   return (
-    <div className="start">
+    <Shell>
       {picker}
       <div className="start-pane">
         {/* The same lockup the splash just settled into, at rest and small —
@@ -416,6 +441,6 @@ export const StartScreen: React.FC<{
           </p>
         ) : null}
       </div>
-    </div>
+    </Shell>
   );
 };

@@ -1574,10 +1574,70 @@ select.preset {
 
 /* ----------------------------------------------------------- start screen */
 
+/*
+   The start screen is layered: a fixed backdrop, and a scroller on top of it.
+   The two are siblings so the constellation cannot scroll away underneath the
+   template grid — `.start` itself never scrolls, `.start-scroll` does.
+*/
 .start {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.start-scroll {
+  position: relative;
+  z-index: 1;
   height: 100%;
   overflow-y: auto;
-  background: var(--bg);
+}
+
+/* Bounds for the field: ParticleField measures its own parent. */
+.start-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.particle-field {
+  position: absolute;
+  inset: 0;
+  display: block;
+  /* Clicks reach the cards above; the field tracks the pointer on `window`. */
+  pointer-events: none;
+}
+
+/*
+   Lit from above, the way the site's hero is. Kept very low — at anything
+   stronger it stops reading as light and starts reading as a gradient, which
+   is the SaaS look the brief rules out.
+*/
+.start-glow {
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  width: min(1100px, 90vw);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgba(255, 255, 255, 0.02) 38%,
+    transparent 68%
+  );
+  pointer-events: none;
+}
+
+/* Dissolves the field into the bottom edge instead of cutting it off. */
+.start-fade {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 34%;
+  background: linear-gradient(to top, var(--bg), transparent);
+  pointer-events: none;
 }
 
 /*
