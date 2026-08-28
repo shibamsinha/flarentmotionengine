@@ -1,611 +1,265 @@
 # Session handoff — Flarent Motion Engine
 
-> **V3 (typography & composition) has since landed.** Section 7 at the bottom
-> covers it. Everything below about V1/V2 still holds — the V2 render path is
-> unchanged and was verified frame-by-frame against a pre-V3 render.
-
-
-Written at the end of the build session that took this from empty directory to
-V2. Read `README.md` for how the engine works; this file is for what a cold
-session needs that the code does not say.
+Dense, cold-start reference. Read `README.md` for how the engine works day to
+day; this file is for what a fresh session needs that the code and README
+don't say — decisions, current state, and traps already found.
 
 ---
 
 ## 1. Goal
 
-Build an internal, reusable **kinetic typography engine** — not a generic video
-editor — closely modelled on `reference/Video-48028.mp4`: minimal, editorial,
-typography-first, fast. React + TypeScript + Vite + Remotion, running locally,
-rendering 1080×1920 / 30fps H.264. Video length is always
-`sum(scene durations)`; nothing about 7 seconds is baked in anywhere. The
-long-term shape is `script → AI → Scene[] → engine → MP4`, and the import path
-for that already exists.
+Flarent Motion Engine is a scene-based kinetic typography engine (React + TS +
+Vite + Remotion) that turns a `Scene[]` data model into a 1080×1920 (or now
+1920×1080) H.264 reel — no fixed template, no fixed duration. This arc of
+sessions took it from the V2 baseline (motion: transitions, blur, easing)
+through **V3** (composition: roles, hierarchy, semantic sizing/positioning,
+oversized/clipped type), **V4** (independent visual styles — solid / outline /
+gradient / split, orthogonal to animation), editor polish (static overlay,
+Extract JSON, the real brand logo, an editable project title), and
+**landscape** as a second project-level output format. Long-term target:
+`script → AI → Scene[] → engine → MP4`, with the import/export JSON schema
+(`templates/SCHEMA.md`) as the seam a future AI Motion Director plugs into.
 
 ---
 
 ## 2. Decisions made (and why)
 
-**Reference measured, not eyeballed.** Before writing animation code the
-reference was analysed frame by frame — per-frame ink bounding boxes,
-alpha-weighted centroids, edge sharpness, colour histograms. Nearly every magic
-number in `utils/typography.ts`, `utils/easing.ts` and the style components came
-out of that and is cited in a comment where it is used. Do not "clean up" those
-constants without re-measuring.
+**Reference-measured, not eyeballed.** Every constant in `typography.ts`,
+`easing.ts`, `composition.ts`, `visualStyle.ts` came from frame-by-frame
+measurement of a reference video (ink bounding boxes, centroids, colour
+sampling), cited in a comment where it's used. Don't "clean up" a magic number
+without re-measuring.
 
-**Position and opacity ride different curves.** The reference's distance-to-rest
-halves each frame while opacity resolves almost linearly. Driving both from one
-curve is the single clearest tell of a template. Hence `EASE.settle` vs
-`EASE.reveal`, and later one entrance curve per style.
+**Layout lives in the planner, motion lives in the components** (`plan.ts` vs
+`components/motion/*.tsx`), and V4 added a third axis on top: **visual style
+lives in `StyledText.tsx` alone**. No animation component ever sees a colour,
+stroke or gradient — `TypeBlock` builds the already-painted glyph and hands it
+to `renderWord(word, line, glyph)`. This is *the* rule that keeps 5 animations
+× 4 styles from becoming 20 components; don't let style logic leak into
+`Massive.tsx`/`Slide.tsx`/etc.
 
-**Layout lives in the planner, motion in the components.** `utils/plan.ts`
-resolves roles, sizes, line positions, absolute word centres and per-word
-timing; a style component only decides how things move. Adding a sixth style is
-one file plus one line in `registry.ts`. Keep this seam.
+**V3 kept two separate planner paths** (`planSingle` for plain-text scenes,
+`planComposed` for `scene.elements`) rather than unifying them, specifically so
+every pre-V3 reel keeps rendering through the *original* code path, byte-for-
+byte. This is why V2 regression checks always pass — don't merge the two paths
+"for cleanliness."
 
-**Sizing is fit-to-width with a per-style ceiling.** Long words shrink to a
-target width; short words hit a cap. MASSIVE's cap is *height*-derived
-(0.40·H of cap height ≈ 0.98·W) because a one-character word cannot fill the
-width — the real limit is how tall a glyph may stand.
+**Static overlay renders as a sibling of `<Series>`, not inside it**
+(`compositions/FlarentVideo.tsx`) — the only way to guarantee it can't inherit
+any scene's motion or get re-mounted at a scene boundary.
 
-**Support-line size is a clamped band, not a ratio.** It tracks the hero at
-0.265 but never leaves 0.078–0.105 · W. The reference's support line is really a
-second fixed step in a two-size scale; scaling purely off the hero makes the
-caption vanish under a long word.
+**Extract and Import share one schema.** `serialiseProject`/`parseFlarentScript`
+in `utils/importScript.ts` are exact inverses — no separate "export format" to
+keep in sync. Import validation is all-or-nothing; unknown enum values are
+errors, never silently substituted.
 
-**Reading order is never rearranged.** Words render in typed order; support text
-before the hero sits above it, after sits below. There is deliberately **no
-manual override** — an earlier `kickerPosition` setting existed and was the
-direct cause of a bug where "I'D TATTOO" rendered TATTOO first. Position is a
-consequence of the sentence.
+**Landscape uses an explicit `canvas: VideoConfig` parameter everywhere, never
+a mutable "current format" global.** Reason: Remotion's `calculateMetadata`
+step and the actual frame-rendering pass are not guaranteed to share JS module
+state (can be different browser pages/realms in `renderMedia`) — a global
+would be correct in the editor's `<Player>` and silently wrong on export.
+Inside the Remotion tree, `format` resolves once via `calculateFlarentMetadata`
+and every descendant reads it back through `useVideoConfig()`. Outside the
+tree (the editor's drag overlays — `BoxStage`/`ImageStage`/`OverlayStage`),
+`App.tsx` computes `canvas` once from `format` state and passes it down
+explicitly. **Do not "simplify" this back to a global.**
 
-**Palette is a *pair*, project-level.** "Flip the field" (RAPID beats, STACK
-builds) needs an unambiguous partner for cream, so `forest` (green·cream) and
-`ink` (black·cream) are project state while scene fields stay literal names.
-Black is `#0F0F0F` not `#000` — pure black bands under H.264 across flat
-full-frame areas.
+**`BoxStage.tsx` is the one shared drag/resize primitive** for both a scene's
+free-placed picture and the project's static overlay — same pointer math
+(capture, corner-aspect-lock, scale-from-preview-size), different `rect`/`min`/
+`onChange`. A canvas *selection* model (`App.canvasTarget`) sits on top: click
+to select (shows handles), click empty canvas or Escape to deselect — an
+unselected box is an invisible hit-area, not permanently-visible furniture.
 
-**Import validation is all-or-nothing.** Every problem in a document is
-collected and reported together and nothing is applied unless the whole file is
-valid. Unknown enum values are errors, not silent fallbacks — a `"PUCNH"` typo
-quietly becoming PUNCH would only surface in the render.
+**The brand logo is the user's real asset**, not a recreation. Early in this
+arc I hand-drew an SVG approximation of it; the user explicitly rejected that.
+`public/brand/logo.png` (2000×2000, mostly transparent padding) is the source
+of truth; `scripts/brand-crop.mjs` regenerates the two on-screen crops
+(`logo-lockup.png`, `logo-mark.png`) from it. **Never redraw the logo from
+memory again — if the asset is missing, ask for the file.**
 
-**V2 seams do not touch the timeline.** Each scene renders its *predecessor's*
-exit inside its own first few frames. No sequence overlaps another, frame count
-is untouched, and the departing word is already on the new field so it takes the
-new ink and stays legible. `<Series>` stayed; this was the least invasive way to
-get visual overlap.
-
-**Field cuts stay cuts.** Same field ⇒ flowing seam (0.11–0.22s). Field change ⇒
-exit capped at 0.1s with a leading fade. Blending across a field change reads as
-the same words inexplicably changing colour. This is the rhythm rule, derived
-from the scenes rather than configured.
-
-**Motion blur is velocity-derived and directional.** Sampling the motion
-function at `frame` and `frame − 1` gives displacement; an `feGaussianBlur` with
-a two-axis `stdDeviation` smears along the axis of travel. CSS `blur()` can only
-smear round, which reads as "out of focus" rather than "moving fast". All
-analytic — no re-rendering, no `@remotion/motion-blur` dependency.
+**Branch before committing to `main`.** Standing practice, not user-specified:
+this repo already had one commit (`114c380`, all of V1–V4) on `main` with a
+real GitHub remote before this arc started. All of this arc's work landed on
+branch `landscape-format` (commit `53e36c9`), not on `main`, and was not
+pushed.
 
 ---
 
 ## 3. Current state
 
-**Everything below is working and was verified by rendering and measuring, not
-by assumption.**
+`tsc --noEmit` and `vite build` both clean as of the last check. Everything
+described above is implemented and was **verified by rendering actual MP4s and
+measuring pixels** (ffprobe dimensions/frame counts, alpha-weighted centroid
+diffs, ink-colour histograms) — not by reading the preview and assuming.
+Nothing is known-broken or half-finished.
 
-- Five styles (MASSIVE / PUNCH / STACK / SLIDE / RAPID), V2 motion quality.
-- Editor: scene CRUD, reorder, duration, style, field, alignment, type scale,
-  emphasis chips, case. Auto-save to `localStorage` (debounced + flushed on
-  `visibilitychange`/`pagehide`). Timeline is a click/drag scrubber; transport
-  with frame stepping and keyboard shortcuts.
-- Images: `full` / `panel` / `split` presets plus `free` with on-canvas
-  drag-and-resize, numeric X/Y/W/H, fit, over/under-type.
-- Import JSON with full validation; `templates/` has a working template, a
-  full-field reference and `SCHEMA.md` (which ends with a prompt block for
-  generating scripts).
-- Export MP4 via the local render server. H.264 High, 1080×1920, yuv420p, CRF 17.
-- Presets: reference reel, V2 motion test (9s), V2 long (18s), 5s / 8s / 19s /
-  30s — all land on exact frame counts (150 / 240 / 570 / 900).
+**Git**: on branch `landscape-format`, working tree clean, one commit ahead of
+`main` (which still points at `114c380`). `origin/main` exists
+(`github.com/shibamsinha/flarentmotionengine.git`) but **nothing from this
+branch has been pushed** — the user asked to commit, not push or merge.
 
-**Nothing is known-broken or half-finished.** `tsc --noEmit` and `vite build`
-both clean.
+**Hosting**: not addressed yet — the user's next question, interrupted to
+request this handoff instead. Key fact for that conversation: this is **two
+processes**, not one. `npm run dev` runs a Vite dev server (the editor UI,
+port 5173) *and* `server/render-server.mjs` (a Node process that drives
+`@remotion/renderer` + headless Chrome to produce MP4s, port 5174) via
+`concurrently`. A static host (Netlify/Vercel/etc.) can serve the built editor
+UI, but MP4 export needs a long-lived Node process with a real Chrome binary
+available — not a typical serverless fit. That split is the first thing to
+raise with the user before recommending a host.
 
-**Not implemented on purpose** (explicitly out of scope): AI generation, any
-OpenAI dependency, voiceover, audio, auth, database, deployment.
-
----
-
-## 4. Files touched
-
-Everything under the project root was created this session. Notable ones:
-
-| path | what it is |
-| --- | --- |
-| `src/types/scene.ts` | `Scene`, `SceneImage`, `PaletteName`, `WordAnimation` — the data model everything crosses |
-| `src/utils/timing.ts` | `CANVAS`, `buildTimeline`, `totalFrames`, `distributeFrames` — all frame arithmetic |
-| `src/utils/typography.ts` | Palettes, Inter metrics, tracking, per-style `SIZING`, `fitToWidth`/`widthOf` (both memoised) |
-| `src/utils/plan.ts` | The planner. Line splitting, roles, ink-accurate stacking, absolute word centres, per-word timing |
-| `src/utils/easing.ts` | Cubic-bezier solver + house curves; V2 added one entrance curve per style and ease-*in* exits |
-| `src/utils/motionBlur.ts` | V2. Velocity → two-axis sigma, per-style `BLUR_GAIN`, `MAX_SIGMA` |
-| `src/utils/transition.ts` | V2. Seam length per style, exit specs, word matching, cross-movement |
-| `src/utils/imageLayout.ts` | Picture rect + the band it leaves the type; every value `finite()`-guarded |
-| `src/utils/importScript.ts` | Storyboard JSON → validated `Scene[]`, and `serialiseProject` back out |
-| `src/utils/persistence.ts` | Auto-save; restore is defensive and discards anything it cannot trust |
-| `src/utils/fonts.ts` | Face loading + `delayRender` gating, module-level singleton |
-| `src/components/motion/primitives.tsx` | `enterValues`, `exitValues`, `carryValues`, `MotionSpan`, `TypeBlock`, `StyleBlock` |
-| `src/components/motion/{Massive,Punch,Slide}.tsx` | Thin — just their curves, handed to `StyleBlock` |
-| `src/components/motion/Stack.tsx` | Own renderer (per-word reveal + background flip helper) |
-| `src/components/motion/Rapid.tsx` | Own renderer (motionless beats) |
-| `src/components/motion/Outgoing.tsx` | V2. The previous scene's type, leaving |
-| `src/components/motion/registry.ts` | style id → component + capabilities |
-| `src/compositions/{FlarentVideo,SceneRenderer}.tsx` | `<Series>` + `calculateMetadata`; per-scene plan, field, picture, seam |
-| `src/components/editor/*` | The tool UI — `ImageStage` and `Transport` are the V-latest additions |
-| `server/render-server.mjs` | `POST /api/render`, `POST /api/upload`, `GET /out/<file>`; bundle cache keyed on `src/` + `public/` mtimes |
-| `templates/` | Import template, full-field reference, `SCHEMA.md` |
-| `README.md` | Architecture, reference findings, V2 section |
+**Dev server is not persistent across tool-call turns in this environment** —
+it stopped at least once mid-arc and had to be restarted manually for browser
+verification. Don't assume it's running; check `curl localhost:5174/api/health`
+or just try to load `localhost:5173` before debugging "why is nothing loading."
 
 ---
 
-## 5. Next steps
+## 4. Files touched (this arc: V3 → V4 → overlay/extract/logo → landscape)
 
-Nothing is outstanding. If work resumes, in rough order of value:
+**Data model**
+- `src/types/scene.ts` — `TextRole`, `SizePreset`, `PositionPreset`,
+  `CompositionPreset`, `SceneElement` (V3); `VisualStyleName`/`VisualStyleConfig`
+  refs, `Scene.visualStyle`/`styleConfig` (V4); `OverlayImage`,
+  `Scene.hideOverlay` (overlay); `CanvasFormat`, `FlarentVideoProps.format`
+  (landscape).
 
-1. **Watch the two V2 demo reels** (`out/flarent-v2-motion-test-9s.mp4`,
-   `-18s.mp4`, or load the presets) and tune values in `utils/transition.ts`
-   (`OVERLAP_SECONDS`, `CROSS_RATIO`, `exitSpecFor`) and `utils/motionBlur.ts`
-   (`MAX_SIGMA`, `SPEED_TO_SIGMA`, `BLUR_GAIN`). These are taste dials; the
-   plumbing is done.
-2. **Typeface.** Inter is ~13% wider than the reference's grotesk, so hero words
-   need more width for the same size. If a closer face is licensed, drop the
-   `.woff2` files into `public/fonts/` and update `FONT_FACES` + `FONT_METRICS`
-   in `utils/typography.ts` — nothing else references a font.
-3. **Flarent's real brand black**, if `#0F0F0F` is not it: `FIELDS.black` and
-   `PALETTES.ink.creamInk`, two constants, one file.
-4. **The AI layer.** The seam exists: a model emits the `templates/SCHEMA.md`
-   document, `parseFlarentScript` validates it, done. Nothing in the engine
-   assumes a human typed the scenes.
-5. **Git.** This is not a repository yet (`git init` never run).
-6. **Remotion licensing** — free for individuals and companies up to three
-   people; larger companies need a commercial licence. Worth settling before it
-   ships internally.
+**Planner / utils**
+- `src/utils/composition.ts` — new in V3: roles, semantic sizes, position
+  anchors, composition presets, flow layout + collision `separate()`. V4 added
+  nothing here (style is separate). Landscape: every geometry function takes
+  `canvas` now.
+- `src/utils/plan.ts` — the planner. V3 added `planComposed`/`ResolvedElement`/
+  `PlannedElement` alongside the original `planSingle`. V4 added `mergeVisual`
+  (element-over-scene style inheritance) and `PlannedElement.visual`. Landscape:
+  `planScene`'s 5th param, threaded through every helper underneath.
+- `src/utils/visualStyle.ts` — **new in V4**. Style registry, colour tokens,
+  `resolveStyle` (config → theme-resolved paint), `styleCss` (the actual CSS,
+  shared between renderer and editor previews so they can't drift).
+- `src/utils/typography.ts` — V3: nothing structural. Landscape:
+  `SIDE_MARGIN`/`KICKER_MIN`/`KICKER_MAX`/`RAPID_BASE_SIZE` became functions
+  (`sideMargin()` etc.) of a `canvas` param; `fitToWidth`/`widthOf` cache keys
+  now include `canvas.width`.
+- `src/utils/imageLayout.ts`, `src/utils/transition.ts` — landscape: `canvas`
+  param threaded through (`composeImage`, `exitSpecFor`, `planTransition`).
+- `src/utils/timing.ts` — landscape: `CANVAS_FORMATS`, `canvasFor()`,
+  `DEFAULT_FORMAT`. `CANVAS` still exists, now means "portrait / the default,"
+  not "the only frame."
+- `src/utils/importScript.ts` — V4: `visualStyle`/`styleConfig` read + written
+  on scenes and elements. Overlay: document-level `overlay`, per-scene
+  `hideOverlay`. Landscape: `format` (with synonyms) read, inferred from
+  width/height if absent, written back by `serialiseProject`.
+- `src/utils/persistence.ts` — sanitisers extended in step with each feature
+  above (`visualStyle`/`styleConfig`, `overlay`, `format`).
+
+**Motion / rendering**
+- `src/components/motion/StyledText.tsx` — **new in V4**. The one place a
+  glyph is painted; `LetterSplit` for SPLIT's letter-band mode.
+- `src/components/motion/primitives.tsx` — `TypeBlock`/`StyleBlock` gained
+  `visual`/`renderWord`'s third `glyph` arg (V4); `MotionProps.canvas`
+  (landscape, required — `SceneRenderer` always supplies it).
+- `src/components/motion/{Massive,Slide}.tsx` — the two styles with
+  frame-relative throws; now read `canvas` from props instead of a module
+  `CANVAS` constant. Punch/Stack/Rapid needed no change (no frame-relative
+  math).
+- `src/components/motion/Outgoing.tsx` — V4: exits per-piece with each
+  element's own visual style (`exitPiecesOf`). Landscape: `canvas` prop.
+- `src/components/motion/OverlayLayer.tsx` — **new**. The static overlay
+  itself; `overlayRect()` now takes `canvas`.
+- `src/compositions/{FlarentVideo,SceneRenderer}.tsx` — `SceneRenderer` reads
+  `useVideoConfig()` once and builds the `canvas` object passed to `planScene`
+  and every style component; `calculateFlarentMetadata` resolves `format` →
+  real width/height.
+
+**Editor**
+- `src/App.tsx` — owns `format` (+ `canvasTarget` selection state from the
+  overlay work); topbar format switch; wires `canvas` down to every consumer
+  that needs it outside the Remotion tree.
+- `src/components/editor/Logo.tsx` — **new**. Renders `public/brand/*.png`.
+- `src/components/editor/{OverlayControls,OverlayStage}.tsx`,
+  `src/components/motion/OverlayLayer.tsx` — the static-overlay feature.
+- `src/components/editor/{BoxStage,ImageStage}.tsx` — `BoxStage` extracted as
+  the shared drag primitive; `ImageStage` thinned to just the picture-specific
+  bits.
+- `src/components/editor/ExtractPanel.tsx` — **new**. "Extract JSON," a
+  first-class button (moved out of the old Import sheet's buried copy button).
+- `src/components/editor/{ElementEditor,VisualStyleControls}.tsx` —
+  `VisualStyleControls` is **new** (V4 style picker with live-rendered
+  previews via `styleCss`); `ElementEditor` wires it in per-element.
+- `src/components/editor/{SceneEditor,ImageControls,ExportBar,VideoPreview}.tsx`
+  — threaded `canvas`/`format` through as each feature needed it.
+- `src/index.css` — style-picker swatches/cards, drag-stage handle colours
+  (image vs. overlay), format-switch glyph, logo lockup sizing.
+
+**Server / scripts / docs**
+- `server/render-server.mjs` — accepts `format` in the render POST body,
+  forwards it in `inputProps`. **This file does not hot-reload** — see
+  Gotchas.
+- `scripts/brand-crop.mjs` — **new**. Regenerates the two logo crops from
+  `public/brand/logo.png`.
+- `templates/SCHEMA.md`, `README.md` — sections added for V3, V4, overlay,
+  Extract JSON, logo, landscape. Read these before re-explaining any of the
+  above from scratch.
+
+---
+
+## 5. Next steps (in order)
+
+1. **Hosting** — the question this handoff interrupted. Needs a real
+   conversation with the user: split hosting (static UI + a persistent render
+   server), a Remotion Lambda/Cloud Run-style serverless render path, or
+   something else — see §3 for the constraint that shapes the answer.
+2. Decide whether/when to push `landscape-format` to `origin` and merge to
+   `main`. Currently local-only.
+3. Typeface + brand black hex — flagged as outstanding since the V1 handoff,
+   never resolved. Needs the actual values/files from the user.
+4. Watch the V4/landscape reels and tune taste dials — gradient colours,
+   outline stroke-weight default, `ROLE_*` constants, composition `gap`s.
+   Plumbing is done; these are opinions, not architecture.
+5. The AI layer itself. `templates/SCHEMA.md` is AI-ready (V4 + landscape
+   prompt blocks included); nothing has been built against it yet.
 
 ---
 
 ## 6. Gotchas
 
-**The render server does not hot-reload.** Vite HMR updates the editor, but
-`server/render-server.mjs` is a Node process — after editing it you *must*
-restart `npm run dev`. This bit the user twice: uploads 404'd and exports
-silently ignored the palette because a stale server was still running.
-
-**Ports 5173 / 5174 are `strictPort`.** Deliberately: Vite used to hop to the
-next free port, which is the render server's, and the collision surfaced as a
-confusing `EADDRINUSE` crash one process over. Both processes now fail loudly
-with the fix in the message. Alternate ports:
-`FLARENT_APP_PORT=5273 FLARENT_RENDER_PORT=5274 npm run dev` — use this to run a
-second stack for verification without disturbing the user's.
-
-**Verification method that actually found bugs.** Render → `ffmpeg` to PNGs →
-NumPy/PIL measure. Background is `frame[5,5]`; ink is `|pixel − bg|.sum(axis=2) >
-threshold`. Row-projection segments lines; column ranges isolate a word.
-Comparing measured ink widths against the reference's is how the type scale was
-calibrated, and per-frame ink coverage is how blank-frame flashes were caught.
-Nothing about the motion was judged by reading code.
-
-**Planner sweep.** In the browser, `await import('/src/utils/plan.ts?t=' +
-Date.now())` (cache-bust is required or you test stale code), call
-`loadFlarentFonts()` first, then brute-force the cross product of styles × texts
-× durations × alignments × images × palettes and assert: no NaN, no negative
-durations, ink fits its band, and **words laid out === words typed, in order**.
-That last assertion is what would have caught the reading-order bug originally.
-Tens of thousands of permutations run in seconds.
-
-**Text measurement needs fonts loaded.** `fitText`/`measureText` silently
-measure the fallback face otherwise. `SceneRenderer` builds no plan until
-`useFontsReady()` is true; the field still paints so there is no flash. Do not
-"optimise" that gate away.
-
-**Frame counts must stay deterministic.** `totalFrames` =
-`sum(max(1, round(duration × fps)))`. The import path additionally snaps
-durations to the grid *cumulatively* (round the running total, not each
-duration) — rounding each independently drifted a 25.6s script by 0.43s over 42
-scenes. V2 seams were built specifically so they cannot change the frame count.
-
-**Things that did not work, and why:**
-- *Cancelling the block transform for carried words* — dividing opacity/scale to
-  undo the block motion is numerically fragile. The fix is `StyleBlock`'s
-  continuity mode: when anything is carried, the block is *pinned* and every
-  word animates for itself.
-- *A back-loaded exit fade* — movement-first is right in principle, but two
-  half-opaque display words in the same place are mush. `exitFade` is
-  front-loaded so one word dominates at every instant.
-- *Token cross-movement (0.34 of the exit throw)* — display type fills the
-  frame, so a small offset separates nothing. 0.75 is the working value.
-- *An effect keyed on `active` to measure the `ImageStage` overlay* — the host
-  element mounts when a picture is attached, which is not a change in `active`,
-  so scale stayed 0 and the overlay never appeared. It uses a callback ref now.
-- *`overflow: hidden` on the image stage* — clipped the resize handles whenever
-  the box bled off-frame, which is exactly when you need them.
-
-**`plan.block` is the *first* RAPID beat, not the last.** Anything asking "what
-is on screen when this scene ends" must use `exitBlockOf()`.
-
-**macOS.** Remotion warns "your macOS version is older than macOS 15" on Sonoma.
-It is noise — rendering works; hundreds of frames were rendered on this machine.
-
-**esbuild's postinstall is gated.** `package.json` carries an `allowScripts`
-entry. A fresh `npm install` on another machine may need
-`npm approve-scripts esbuild`, or Vite will not start.
-
-**`out/` and `public/uploads/` are gitignored** (with `.gitkeep` files). The user
-has their own renders and uploads in there — do not bulk-delete.
-
-**Scratchpad artefacts are gone.** The frame dumps, contact sheets and analysis
-scripts lived in the session scratchpad, not the repo. The *findings* are in code
-comments and `README.md`; the raw measurements are not recoverable without
-re-running the analysis on `reference/Video-48028.mp4`.
-
----
-
-## 7. V3 — typography & composition
-
-### What changed
-
-A scene can now hold **`elements`**: independently placed, sized, roled and
-animated pieces of type. Without that field a scene plans through the V2 code
-path untouched, which is the whole compatibility story.
-
-New file: `src/utils/composition.ts` — roles, size rules, position anchors,
-composition presets, the flow layout and the collision safety net. It is the
-design system; `typography.ts` stayed "font, palette, measurement".
-
-Reshaped: `plan.ts` (two planners — `planSingle` is V2 verbatim, `planComposed`
-is new; `BlockLayout` gained `left` and `inkCentre` so placement lives entirely
-in the planner), `primitives.tsx` (`StyleBlock` takes a `PlannedElement`, not a
-plan; `amplify()` scales a motion's deviation from rest so role amplitude works
-for all five styles without touching any of them), `Outgoing.tsx` (exits every
-element under its own style), `SceneRenderer` (one style component per element).
-
-`ScenePlan.composition` was renamed `ScenePlan.picture` — it holds the *image*
-composition, and V3 needed the word back.
-
-### Decisions worth not re-litigating
-
-**Legacy scenes keep the old planner.** Not a compatibility shim — it is the
-only way to guarantee V2 renders unchanged, and it was verified rather than
-assumed (see below). Do not "unify" the two planners.
-
-**A role is one scale per element.** No hero/kicker split *inside* an element;
-that would put two competing hierarchies in one place, and roles are the
-hierarchy now.
-
-**Overhang shrinks as words get longer.** The binary short/long tier MASSIVE
-uses cannot serve both `MORE` (4 chars) and `CUSTOMERS` (9), and the brief wants
-both oversized. `targetWidth()` is the continuous curve; it is a pure function
-so you can argue with it in the console.
-
-**`min` is capped at the frame-filling size.** A floor stops text vanishing; it
-must never *cause* a bleed. Before this cap a 15-char line at OVERSIZED was
-inflated to 1.36 × frame width — more overhang than a 4-char word. Caught by
-measuring, not by reading.
-
-**Type is never shrunk to fit.** `bandRoom` and `minVisible` are the entire
-auto-fit policy. Raising them "so everything fits" would undo V3.
-
-**Weight carries hierarchy at the extremes only** (900/800/800/700). One weight
-per role reads as a weight salad.
-
-### Verification actually run
-
-- **V2 preserved, measured.** Rendered the V2 preset under V3 and diffed all 270
-  frames against `out/flarent-v2-motion-test-9s.mp4`: max channel diff 167, mean
-  0.123, 125 frames with ±1px ink-bbox jitter. Then rendered the *same code
-  twice*: 163 / 0.117 / 115. The delta is the renderer's own noise floor — H.264
-  and font rasterisation are not deterministic here. **Re-run this comparison
-  before trusting any future "V2 is fine" claim; a bare diff will never be zero.**
-- **Planner sweep**, 1868 permutations (styles × roles × sizes × positions ×
-  compositions × durations × pathological text): no NaN, no out-of-range timing,
-  words laid out === words typed in order. Elements with empty text are dropped
-  by design, so element counts are not preserved for those.
-- **Invariants**: zero hierarchy violations across all eight compositions; zero
-  clipping at contained sizes; bleeding sizes always bleed.
-- **Import**: the brief's own Part 11 JSON parses with zero issues and
-  round-trips through `serialiseProject` identically. Bad enums are still errors.
-
-### Gotchas added
-
-**`plan.block` is the *dominant* element's block**, and `plan.style` its style.
-Anything scene-wide (field cuts, `stackStepAt`, `rapidBackground`) reads those.
-Anything that must cover the whole frame — transitions, exits — must use
-`plan.elements` / `exitPiecesOf()`, not `plan.block`.
-
-**A delayed element's words start at `element.delay`, not 0.** Two places test
-for this (`StyleBlock`, `Stack`); testing against 0 double-animates the block.
-
-**The root `AbsoluteFill` clips (`overflow: hidden`).** Scene layers must stay
-`overflow: visible` or motion-blur filter regions get cut at scene boundaries.
-
-**Frame 0 of any reel is blank** — the first frame of an entrance is at opacity
-0. Pre-existing V2 behaviour, identical before and after V3; measured, not
-assumed. Fixing it means changing entrance timing, which would change V2.
-
-**Presets can be measured outside the browser** by bundling them:
-`npx esbuild src/data/presets.ts --bundle --format=esm --platform=node --outfile=/tmp/p.mjs`
-then importing and dumping to JSON for `v2render.mjs`. Text *measurement* still
-needs the browser (fonts), so the planner sweep must run there.
-
-### Next steps
-
-1. **Watch the V3 reels** (`V3 composition demo`, `V3 hierarchy test`,
-   `V3 oversized test`, `V3 long composition`) and tune taste dials:
-   `SIZE_RULES` (bleed / bleedSpan / minVisible), `ROLE_CEILING`, `ROLE_MOTION`,
-   and each composition's `gap`. The plumbing is done; these are opinions.
-2. **The AI layer.** `templates/SCHEMA.md` now carries a V3 prompt block and
-   `templates/script-v3-composition.json` a worked example. The seam is
-   unchanged: a model emits the document, `parseFlarentScript` validates it.
-3. Still outstanding from V2: typeface, brand black, `git init`, Remotion
-   licensing.
-
----
-
-## 8. The static overlay
-
-A project-level image over the whole reel, with a per-scene opt-out.
-
-**It is rendered as a sibling of `<Series>`, and that placement is the feature.**
-Move it inside a sequence and it inherits that scene's lifetime, re-mounts at
-every boundary and becomes reachable by scene motion — which is exactly what it
-must not be. `OverlayLayer` reads the frame for one reason only: to look up
-whether the scene currently on screen set `hideOverlay`.
-
-Not a `SceneImage`, and should not be merged with one. A scene image animates on
-the scene's entrance and carves a band out of the frame that the type composes
-around; an overlay does neither.
-
-Hiding is a hard cut, not a fade — it coincides with a scene change, where the
-reel already cuts, so a fade would be the only soft edge in the film.
-
-Where it lives: `OverlayImage` in `types/scene.ts`, `FlarentVideoProps.overlay`,
-`components/motion/OverlayLayer.tsx`, `components/editor/OverlayControls.tsx`
-(project panel), the `Static image` toggle in `SceneEditor`, `persistence.ts`,
-`importScript.ts` (document-level `overlay`, per-scene `hideOverlay`), and
-`server/render-server.mjs`.
-
-**The render server had to change for this**, which means the usual trap applies
-with force: `npm run dev` must be restarted or exports silently drop the
-overlay. That is precisely how the first verification render came back empty —
-the running server was pre-overlay code and ignored the field. To verify without
-disturbing a running stack, start a second render server only:
-`FLARENT_RENDER_PORT=5274 node server/render-server.mjs`.
-
-**Direct manipulation.** `BoxStage` (`components/editor/BoxStage.tsx`) is the
-extracted drag/resize surface; `ImageStage` and `OverlayStage` are thin
-adapters over it that differ only in what they read and what they commit. The
-pointer arithmetic was duplicated nowhere — if you add a third draggable thing,
-extend `BoxStage` rather than copying it. The overlay box is amber and the
-picture box green because grabbing the wrong one changes every scene at once.
-`OverlayStage` hides on a scene that opted out: handles over something that will
-not render would be the editor lying about the output.
-
-Handles are a **selection**, held in `App.canvasTarget` (`'image' | 'overlay' |
-null`). Unselected, `BoxStage` still renders its rect as an invisible hit area —
-something has to be clickable for the object to be selectable again. A
-`.stage-backdrop` under both boxes clears the selection on press, and boxes stop
-propagation so a press that lands on one does not immediately clear it. Escape
-also clears, which matters for a full-bleed picture where there is no empty
-canvas left to click. Playback and removing the overlay clear it too.
-
-Verified by rendering: present on all eight scenes that kept it, absent on the
-one that set `hideOverlay`; overlay mask byte-identical across cream-field
-scenes and within 0.75% (encoder noise) across five green-field scenes, i.e. it
-provably does not move or animate.
-
----
-
-## 9. Extract JSON
-
-`components/editor/ExtractPanel.tsx`, opened from the top bar. It is a surface
-over `serialiseProject` — download, copy, read — not a new format.
-
-**Import and export share one schema on purpose.** Extract emits exactly what
-`parseFlarentScript` accepts, so a reel round-trips: verified in the browser on
-the V3 demo plus an overlay — 9 scenes, 432 frames, zero issues, compositions,
-element roles, the overlay and a `hideOverlay` flag all preserved. If you add a
-field to `Scene`, add it to `serialiseElement`/`serialiseProject` *and* the
-reader, or the round trip quietly loses it.
-
-`serialiseElement` writes only what was actually set, so AUTO/inherited fields
-are absent from the output. That is intended — a document full of defaults
-teaches a reader, human or model, that every field is required.
-
-This replaced the old "Copy current reel as JSON" button inside the import
-sheet, which was a second path to the same thing and whose `useCallback` deps
-were missing `overlay`, so it copied a stale one. `ImportPanel` no longer takes
-`scenes` / `title` / `fields` / `overlay` at all.
-
-Note the palette name (`forest` / `ink`) is not written; the reader infers it
-from whether any scene uses the `black` field, which is how the editor assigns
-it in the first place. That round-trips correctly — do not "fix" it by adding a
-`palette` key without checking both sides.
-
----
-
-## 10. V4 — visual styles
-
-`animation` = how type moves. `visualStyle` = how it looks. Two independent
-fields; all twenty combinations valid.
-
-**The architectural rule, and the reason V4 is cheap:** no animation component
-contains a colour. `TypeBlock` builds the painted word and passes it as the
-third argument to `renderWord(word, line, glyph)`; animations drop it into their
-`<MotionSpan>` and never inspect it. The two systems meet only in
-`components/motion/StyledText.tsx`. **If you ever find yourself writing
-`if (style === 'outline')` inside an animation file, the design has been lost.**
-
-New: `utils/visualStyle.ts` (registry, colour tokens, `resolveStyle`,
-`styleCss`), `components/motion/StyledText.tsx`,
-`components/editor/VisualStyleControls.tsx`.
-
-### Decisions worth not re-litigating
-
-**Style resolves in `SceneRenderer`, not the planner.** STACK and RAPID cut the
-field mid-scene, so an ink-derived colour is a property of the *frame*.
-`PlannedElement.visual` holds the merged-but-unresolved config; `resolveStyle`
-runs per frame against the live theme.
-
-**Configs merge only when types agree** (`mergeVisual` in `plan.ts`). Inheriting
-a scene's gradient stops into an element that asked for OUTLINE would apply
-settings that style has no use for.
-
-**Stroke weight is a fraction of font size**, clamped 1.5–18px. Pixels would
-give an OVERSIZED word a hairline and a caption a slab. The importer reads a
-value > 1 as a percentage and warns.
-
-**The gradient box is the element, not the word** — each word offsets into a
-ramp sized to the whole block, so it runs continuously across a phrase.
-
-**SPLIT clips, it does not re-split.** Per-character spans would discard kerning
-and re-flow the word off the planner's measurements. Two stacked copies with
-`clip-path` bands leave the typography untouched.
-
-**Theme-aware defaults are the coherence mechanism.** `{ type: 'solid' }` is a
-complete style. Do not hardcode colours into the demos "to be safe" — that is
-what would turn four styles into four unrelated looks.
-
-### Verification actually run
-
-- **All four styles measured in an exported MP4** (not the preview — Part 8 is
-  right that they differ). Fill ratio 0.59 / **0.31** / 0.60 / 0.61 and distinct
-  colours 53 / 68 / **238** / 169 for solid / outline / gradient / split.
-  `background-clip: text` works in Remotion's headless Chrome.
-- **V2 preserved.** Same V2 preset rendered under V4 vs the pre-V3 baseline:
-  alpha-weighted **centroid moved 0.016px**, total ink changed −0.002%. Bbox-
-  differing frames rose (115 → 178) but that is a *threshold* artefact on the
-  antialiased top row — x0/x1/y1 deltas are symmetric noise and only y0 is
-  biased, by 0.2px. **Use the centroid, not the bbox, for this comparison.**
-- **Style rhythm is measurable**: the V4 reel's per-scene distinct-colour counts
-  run 47, 50, 59, 194, 49, 107, 48, 46, 220 — the two gradient payoffs stand out
-  against everything else.
-- **Editor**: scene style and element style are separate controls; clicking the
-  element's card left the scene on SOLID and vice versa, and animation stayed
-  SLIDE while the style became GRADIENT.
-
-### Gotchas
-
-**The ElementEditor's style cards come before the scene's in the DOM.** A
-querySelector that grabs "the first GRADIENT card" hits the element override,
-not the scene. Cost me a false bug report; target the block by its label.
-
-**`Scene.style` is the *animation*.** V4 added `Scene.visualStyle`. Do not
-rename either — `PlannedElement.style` is likewise the animation, and
-`PlannedElement.visual` is the paint.
-
-### Next steps
-
-1. Watch the V4 reels and tune `HOUSE_GRADIENT`, `ROLE_*`, and the outline
-   weight default (0.03). Taste dials; plumbing is done.
-2. The AI layer. `templates/SCHEMA.md` now carries a V4 prompt block that states
-   the animation/style split explicitly and warns against spending GRADIENT.
-3. Still outstanding: typeface, brand black, `git init`, Remotion licensing.
-
----
-
-## 11. Editor chrome
-
-The top bar carries what the reel **is** (logo, editable title, preset, palette,
-counts); the bottom bar carries what you can **do** to it (transport, Import
-JSON, Extract JSON, Reset, Export MP4). Keep new project-level actions in the
-bottom bar — the top bar filling up is what prompted the split.
-
-**The logo is the supplied asset, not a redrawing.** `public/brand/logo.png` is
-the source of truth. `scripts/brand-crop.mjs` regenerates `logo-lockup.png`
-(448x78) and `logo-mark.png` (81x78) from it — tight alpha crops at 3x the 22px
-navbar height. Re-run it if the asset changes; do not hand-edit the crops.
-
-An earlier version of this file used a hand-drawn SVG approximation of the mark.
-That was wrong and the user rejected it. If an asset cannot be read from disk,
-**ask for it** rather than approximating a brand mark.
-
-The project title is an `<input>` in the top bar, edited in place. It flows into
-the auto-save, `serialiseProject`, and the Extract filename.
-
----
-
-## 12. Landscape
-
-The frame (`CanvasFormat`, `'portrait' | 'landscape'`) is now a project-level
-choice next to the palette in the top bar, persisted, imported/exported, and
-threaded to the render server. `CANVAS` in `utils/timing.ts` is still exported
-and still means portrait — it is the *default*, not a global that changes.
-
-**The architectural decision that made this tractable, and must not be
-undone:** every sizing/layout function takes an explicit `canvas: VideoConfig`
-parameter defaulting to `CANVAS`. No function reads a mutable "current format"
-global. The reason: Remotion's `calculateMetadata` step (which decides
-width/height for a render) and the actual frame-rendering pass are not
-guaranteed to share JS module state — they can be different pages/realms in
-`renderMedia`. A global would work in the editor's `<Player>` (same page,
-same module graph) and be silently wrong in an export. This was verified by
-reasoning about Remotion's render pipeline, not by hitting the bug — treat it
-as a hazard already avoided, and if you're tempted to simplify the plumbing
-back to a global, don't.
-
-**Two different ways the value reaches consumers, and why:**
-- Inside the Remotion tree (planner, animation styles, `OverlayLayer`):
-  nothing is passed `format` as a prop. `calculateFlarentMetadata` resolves it
-  to `{width,height,fps}` once for the whole composition; every descendant
-  calls `useVideoConfig()` for the same value — identical in the editor
-  `<Player>` and the render server's headless export.
-- Outside the tree (`BoxStage`/`ImageStage`/`OverlayStage`, the drag overlays
-  the editor draws on top of the player): no Remotion context exists there, so
-  `App.tsx` computes `canvas = canvasFor(format)` once and passes it down
-  explicitly as a prop.
-
-**Files touched**, roughly in call-graph order: `utils/timing.ts`
-(`CANVAS_FORMATS`, `canvasFor`), `types/scene.ts` (`CanvasFormat`,
-`FlarentVideoProps.format`), `utils/typography.ts` (`sideMargin`/`kickerMin`/
-`kickerMax`/`rapidBaseSize` became functions; `fitToWidth`/`widthOf` cache keys
-now include `canvas.width` — a size legitimately differs by frame width even
-for the same text/weight), `utils/imageLayout.ts`, `utils/composition.ts`,
-`utils/plan.ts` (biggest: `planScene`'s new 5th param threads through both
-`planSingle` and `planComposed` and every helper under them),
-`utils/transition.ts` (`exitSpecFor`), `components/motion/Massive.tsx` +
-`Slide.tsx` (the two style components with frame-relative throws — `MotionProps`
-now carries `canvas`, required since `SceneRenderer` always supplies it),
-`components/motion/OverlayLayer.tsx`, `compositions/{SceneRenderer,
-FlarentVideo}.tsx`, then the editor layer (`App.tsx` owns `format` state;
-`VideoPreview`, `BoxStage`/`ImageStage`/`OverlayStage`, `ImageControls`,
-`SceneEditor`, `ExportBar`, `ExtractPanel` all take it), `utils/{persistence,
-importScript}.ts`, `server/render-server.mjs`.
-
-**`utils/importScript.ts`**: `format` accepts `PORTRAIT`/`LANDSCAPE` and
-synonyms (`VERTICAL`/`9:16`, `HORIZONTAL`/`WIDE`/`16:9`) via the same
-`vocab()`/`canon()` machinery as every other enum. Absent an explicit field,
-declared `width`/`height` infer it (`1920x1080` → landscape) rather than
-always warning "not 9:16" — verified both paths return zero issues on valid
-input and a clean error message on an invalid `format` string.
-
-### Verified
-
-- Rendered the same reel in both formats: landscape MP4 probes at exactly
-  1920×1080/30fps, 432 frames — identical frame count to its portrait sibling,
-  only the shape differs.
-- Measured the landscape output, not just watched it: GRADIENT and OVERSIZED
-  scenes bleed left/right on the 16:9 frame exactly as the composition system
-  intends, not stretched from portrait's numbers.
-- **Portrait regression check, done properly.** A raw before/after diff showed
-  up to 2px of centroid drift on a few frames — investigated rather than
-  waved off, by rendering identical code twice: same 1.5px/22-frame profile.
-  It's V4's SVG gradient/stroke filters adding their own rasterization jitter
-  (not present in the pre-V4 baseline this repo used to compare against), not
-  something this turn's canvas threading caused. **If you re-run this
-  regression check later, diff against a same-code baseline, not an old one
-  from before V4 — the noise floor moved when gradients/strokes did.**
-- Import/export round-trip: a `LANDSCAPE` document parses with zero issues,
-  serialises back to the same value, and a bad `format` string still errors
-  with the same message shape every other enum in the importer uses.
-
-### Next steps
-
-Nothing outstanding for this feature. Still open from earlier sessions:
-typeface, brand black, `git init`, Remotion licensing.
+- **This file (SESSION_HANDOFF.md) can go stale** — an earlier version of it
+  claimed "git init" was still outstanding when the repo already had a commit
+  and a GitHub remote. Verify repo/environment state directly (`git status`,
+  `git log`, `curl` the health endpoints) rather than trusting a prior
+  handoff's claims about it.
+- **The render server does not hot-reload.** Editing `server/render-server.mjs`
+  and then exporting without restarting `npm run dev` silently runs the old
+  code — this actually happened mid-arc (the static overlay was missing from
+  an export because the server process predated the feature). Always restart
+  after touching that file, and verify with `curl localhost:5174/api/health`.
+- **`ElementEditor`'s per-element style/animation cards render before the
+  scene-level ones in DOM order.** A naive `querySelector('.style-card')`
+  grabs the element override, not the scene default — produced a false "bug"
+  mid-session. Target controls by their label text/container, not position.
+- **The renderer has an inherent noise floor between identical renders** —
+  measured by rendering the same input twice: up to ~1.5–2px of alpha-weighted
+  centroid drift, ~20/430 frames with >0.7px bbox delta, from H.264/antialiasing/
+  SVG-filter rasterization jitter, not layout bugs. V4's gradient/stroke SVG
+  filters raised this floor slightly versus pre-V4. **When checking for a
+  regression, diff against a same-code two-run baseline, never a historical
+  file** — otherwise you'll chase phantom regressions (did exactly this once,
+  resolved by re-measuring).
+- **`CANVAS` in `utils/timing.ts` now means "portrait / the default," not
+  "the active frame."** Any new sizing/layout function must take an explicit
+  `canvas` parameter — never read `CANVAS.width`/`height` and assume it's
+  correct for the current project.
+- **Measurement caches are keyed on frame width now** (`fitToWidth`/`widthOf`
+  in `typography.ts`). Any new per-frame-dependent measurement needs the same
+  treatment or you'll get portrait-cached values leaking into a landscape
+  render (or vice versa) within one process's lifetime.
+- **`Scene.style` is the animation; `Scene.visualStyle` is the paint.** Same
+  split on `PlannedElement.style` vs `PlannedElement.visual`. Don't conflate
+  when reading or extending either type.
+- **Frame 0 of every reel is blank by design** — entrance opacity starts at 0.
+  Not a bug; don't "fix" it without deliberately changing V2's entrance timing
+  (which would ripple through every style).
+- **`.gitignore` already correctly excludes** `node_modules`, `dist`, render
+  outputs in `out/`, and `public/uploads/*` — confirmed empirically before the
+  last commit; `git add -A` is safe in this repo.
