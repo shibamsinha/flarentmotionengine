@@ -41,9 +41,16 @@ import { TemplateBrowser } from './TemplateBrowser';
  */
 type Failure = { title: string; hint: string; detail: string | null };
 
+/**
+ * `import` carries the pasted/loaded text and any failure with it, so a
+ * rejected document stays on screen to be corrected rather than being thrown
+ * away behind a full-screen error. Template failures keep the separate `failed`
+ * view because there is nothing to correct in that case — only to retry.
+ */
 type View =
   | { kind: 'choose' }
   | { kind: 'templates' }
+  | { kind: 'import'; text: string; failure: Failure | null }
   | { kind: 'busy'; label: string }
   | { kind: 'failed'; failure: Failure };
 
@@ -73,45 +80,93 @@ export const StartScreen: React.FC<{
   onOpen: (project: Project, origin: ProjectOrigin) => void;
 }> = ({ resumable, onOpen }) => {
   const [view, setView] = useState<View>({ kind: 'choose' });
+  const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const fail = useCallback((failure: Failure) => {
     setView({ kind: 'failed', failure });
   }, []);
 
+  /**
+   * One import path. A file and a paste differ only in where the text came
+   * from, so both end up here and get the same validation and the same words
+   * when they fail — there is no way for the two to drift apart.
+   */
+  const runImport = useCallback(
+    (source: string, origin: 'file' | 'paste') => {
+      const text = source.trim();
+      if (text === '') {
+        setView({
+          kind: 'import',
+          text: source,
+          failure: {
+            title: 'Nothing to import.',
+            hint: 'Choose a .json file, or paste a project below.',
+            detail: null,
+          },
+        });
+        return;
+      }
+
+      const result = parseFlarentScript(text);
+      if (!result.ok) {
+        const errors = result.issues.filter((i) => i.severity === 'error');
+        setView({
+          kind: 'import',
+          // The document stays in the box so it can be corrected in place.
+          text: source,
+          failure: {
+            title: "This isn't a valid Flarent Motion Engine project.",
+            hint:
+              origin === 'file'
+                ? 'Check the file was extracted from the Motion Engine — or edit it below and import again.'
+                : 'Fix the problems below and import again.',
+            detail:
+              errors
+                .slice(0, 6)
+                .map((i) => (i.path ? `${i.path}: ${i.message}` : i.message))
+                .join('\n') || null,
+          },
+        });
+        return;
+      }
+      onOpen(createProjectFromJSON(result.project), 'import');
+    },
+    [onOpen],
+  );
+
   const readFile = useCallback(
     (file: File | undefined) => {
       if (!file) return;
-      setView({ kind: 'busy', label: 'Importing project…' });
 
       const reader = new FileReader();
       reader.onerror = () =>
-        fail({
-          title: "That file couldn't be read.",
-          hint: 'It may have been moved or renamed. Try choosing it again.',
-          detail: null,
+        setView({
+          kind: 'import',
+          text: '',
+          failure: {
+            title: "That file couldn't be read.",
+            hint: 'It may have been moved or renamed. Try again, or paste the project below.',
+            detail: null,
+          },
         });
-      reader.onload = () => {
-        const result = parseFlarentScript(String(reader.result ?? ''));
-        if (!result.ok) {
-          const errors = result.issues.filter((i) => i.severity === 'error');
-          fail({
-            title: "This isn't a valid Flarent Motion Engine project.",
-            hint: 'Check that the file was extracted from the Motion Engine, then try another file.',
-            detail:
-              errors
-                .slice(0, 4)
-                .map((i) => (i.path ? `${i.path}: ${i.message}` : i.message))
-                .join('\n') || null,
-          });
-          return;
-        }
-        onOpen(createProjectFromJSON(result.project), 'import');
-      };
+      reader.onload = () => runImport(String(reader.result ?? ''), 'file');
       reader.readAsText(file);
     },
-    [fail, onOpen],
+    [runImport],
   );
+
+  /**
+   * The picker is opened straight from the card so the fastest route is one
+   * click, but the screen moves to the import view underneath it at the same
+   * time. Cancelling the OS dialog therefore lands on somewhere useful — with
+   * the paste box ready — instead of back on the three cards having achieved
+   * nothing.
+   */
+  const beginImport = useCallback(() => {
+    setView({ kind: 'import', text: '', failure: null });
+    fileRef.current?.click();
+  }, []);
 
   const useTemplate = useCallback(
     (preset: Preset) => {
@@ -172,6 +227,94 @@ export const StartScreen: React.FC<{
     );
   }
 
+  if (view.kind === 'import') {
+    const { text, failure } = view;
+    const setText = (next: string) =>
+      // Editing clears the previous complaint — the errors described the old
+      // text, and leaving them up makes them look like live validation.
+      setView({ kind: 'import', text: next, failure: null });
+
+    return (
+      <div className="start">
+        {picker}
+        <div className="start-pane">
+          <div className="start-head">
+            <button
+              type="button"
+              className="start-back"
+              onClick={() => setView({ kind: 'choose' })}
+            >
+              ← Back
+            </button>
+            <h1 className="start-title">Import a project</h1>
+            <p className="start-sub">
+              Choose a <code>.json</code> file, or paste one straight in.
+            </p>
+          </div>
+
+          <div className="import-panel">
+            <button
+              type="button"
+              className={`dropzone${dragging ? ' is-over' : ''}`}
+              onClick={() => fileRef.current?.click()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragging(false);
+                readFile(event.dataTransfer.files?.[0]);
+              }}
+            >
+              Drop a .json file here, or click to choose one
+            </button>
+
+            <p className="import-or">or paste the JSON</p>
+
+            <textarea
+              className="text-input import-input"
+              spellCheck={false}
+              autoFocus
+              placeholder={'{\n  "title": "…",\n  "scenes": [ … ]\n}'}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+
+            {failure ? (
+              <div className="import-failure">
+                <p className="import-failure-title">{failure.title}</p>
+                <p className="import-failure-hint">{failure.hint}</p>
+                {failure.detail ? (
+                  <pre className="start-detail">{failure.detail}</pre>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="start-actions">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={text.trim() === ''}
+                onClick={() => runImport(text, 'paste')}
+              >
+                Import project
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setView({ kind: 'choose' })}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (view.kind === 'failed') {
     const { failure } = view;
     return (
@@ -185,13 +328,15 @@ export const StartScreen: React.FC<{
           {failure.detail ? (
             <pre className="start-detail">{failure.detail}</pre>
           ) : null}
+          {/* Only template loading lands here now — import failures stay in
+              the import view so the document can be corrected in place. */}
           <div className="start-actions">
             <button
               type="button"
               className="btn primary"
-              onClick={() => fileRef.current?.click()}
+              onClick={() => setView({ kind: 'templates' })}
             >
-              Try another file
+              Back to templates
             </button>
             <button
               type="button"
@@ -238,7 +383,7 @@ export const StartScreen: React.FC<{
               style={{ '--i': i } as React.CSSProperties}
               onClick={() => {
                 if (card.id === 'scratch') onOpen(createBlankProject(), 'scratch');
-                else if (card.id === 'import') fileRef.current?.click();
+                else if (card.id === 'import') beginImport();
                 else setView({ kind: 'templates' });
               }}
             >

@@ -88,6 +88,16 @@ initialisers reading an `initial: Project` prop instead of a module-scope
 `loadProject()`. If you ever need to prove the editor is untouched again, that
 diff is the check — not a read-through.
 
+**Import takes a file or a paste, through one function.** `runImport()` in
+`StartScreen.tsx` is the single path; a file and a paste differ only in where
+the text came from, so they cannot drift apart in validation or in wording. The
+card opens the OS picker *and* switches to the import view at the same time, so
+cancelling the dialog is not a dead end — the user asked for the paste box
+specifically, and it is also the answer to "I have the JSON but not a file".
+Import failures stay inline in that view with the text intact (correctable in
+place); only template failures use the full-screen `failed` view, because there
+is nothing to correct there.
+
 **One project constructor, three doors.** `utils/project.ts` is the only place a
 `Project` is made. The editor takes one and cannot tell whether it came from
 scratch, JSON or a template. Don't add a fourth branch inside the editor; add a

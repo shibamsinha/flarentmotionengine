@@ -92,9 +92,15 @@ conditionals into the editor.
 
 - **Start from scratch** is one empty scene, not zero: composition length is the
   sum of its scenes, and Remotion cannot mount a zero-frame composition.
-- **Import JSON** opens the file picker straight from the card and runs the same
-  `parseFlarentScript` the editor's Import panel uses — one validator, one
-  definition of a valid project. A bad file gets a sentence, not a stack trace.
+- **Import JSON** opens the file picker straight from the card *and* moves the
+  screen to an import view behind it, so cancelling the OS dialog lands
+  somewhere useful instead of back on the three cards. That view takes a file
+  (click or drop) or pasted JSON — both run the same `parseFlarentScript` the
+  editor's Import panel uses, so there is one validator and one definition of a
+  valid project. A rejected document stays in the box with the parser's
+  complaints listed under it, correctable in place; editing clears them, because
+  stale errors read as live validation. A bad file gets a sentence, never a
+  stack trace.
 - **Start from a template** browses `PRESETS` — the existing Reference Reels,
   read rather than copied. There is no second template data structure. Each
   preset's `build()` mints fresh scenes and ids on every call, so the project
