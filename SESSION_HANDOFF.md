@@ -279,6 +279,11 @@ touched, see §2)
 - `scripts/splash-wordmark.mjs`, `public/brand/splash-wordmark.png`,
   `reference/splash.mp4` — **new**. The wordmark asset and the source it is cut
   from.
+- `scripts/favicon.mjs`, `public/{favicon.ico,favicon.png,apple-touch-icon.png}`,
+  `index.html` — **new**. Browser icons, cut from `logo.png` like every other
+  brand crop. A standalone `public/brand/favicon.png` was supplied but is
+  **not** the source: it carries the same artwork at 68×64 of ink inside a
+  500px canvas, against `logo.png`'s 268×258. It is currently unused.
 
 ---
 
