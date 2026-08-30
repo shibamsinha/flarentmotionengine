@@ -8,6 +8,7 @@
 
 import type { Scene, SceneElement } from '../types/scene';
 import { blankScene, defaultScenes, element } from './defaultScenes';
+import { v6Mixed, v6Objects } from './v6Demos';
 
 export type Preset = {
   id: string;
@@ -701,6 +702,18 @@ const v4Reel = (): Scene[] => [
 ];
 
 export const PRESETS: Preset[] = [
+  {
+    id: 'v6-mixed',
+    label: 'V6 typography + motion graphics',
+    note: '4 scenes · card, button, cursor, icon — with kinetic type',
+    build: v6Mixed,
+  },
+  {
+    id: 'v6-objects',
+    label: 'V6 object catalogue',
+    note: 'every object kind and entrance, one frame',
+    build: v6Objects,
+  },
   {
     id: 'v4-dynamic',
     label: 'V4 dynamic styles',

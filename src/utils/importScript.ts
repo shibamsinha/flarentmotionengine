@@ -31,7 +31,8 @@ import type {
   TextCase,
   TextRole,
 } from '../types/scene';
-import { makeSceneId } from '../data/defaultScenes';
+import { makeElementId, makeSceneId } from '../data/defaultScenes';
+import { parseObjects, serialiseObject, type ObjectIssue } from './importObjects';
 import {
   CANVAS,
   DEFAULT_FORMAT,
@@ -622,18 +623,34 @@ const readScene = (
   );
   if (sceneStyleConfig.failed) failed = true;
 
+  // objects (V6) -----------------------------------------------------------
+  const objectIssues: ObjectIssue[] = [];
+  const objects = parseObjects(raw.objects, at('objects'), objectIssues, makeElementId);
+  for (const issue of objectIssues) {
+    push(issue);
+    if (issue.severity === 'error') failed = true;
+  }
+
   // text ------------------------------------------------------------------
   // A scene that supplied `elements` has its words there, so `text` is
   // optional — and if those elements failed validation, the reader is already
   // being told why. Adding "this scene has no text" on top of that points at
   // the wrong line.
+  //
+  // V6 widened this: a scene may now be pure motion graphics, with a card and a
+  // cursor and no type at all. "Every scene needs words" was true when words
+  // were the only thing a scene could contain, and stopped being true the
+  // moment objects existed — so the requirement is now that a scene contains
+  // *something*, by any of the three routes.
   const suppliedElements = Array.isArray(raw.elements) && raw.elements.length > 0;
+  const suppliedObjects = objects !== null && objects.length > 0;
   const text = asString(raw.text ?? raw.copy ?? raw.line);
   const derived = elements?.map((element) => element.text).join('\n') ?? null;
-  if (!suppliedElements) {
-    if (text === null) fail('text', 'Missing. Every scene needs a `text` string, or `elements`.');
+  if (!suppliedElements && !suppliedObjects) {
+    if (text === null)
+      fail('text', 'Missing. Every scene needs a `text` string, `elements`, or `objects`.');
     else if (text.trim() === '')
-      fail('text', 'Empty. A scene with no words cannot be rendered.');
+      fail('text', 'Empty. A scene needs words, elements or objects to render.');
   }
 
   // style -----------------------------------------------------------------
@@ -845,6 +862,7 @@ const readScene = (
       ...(hideOverlay !== undefined ? { hideOverlay } : {}),
       ...(image !== undefined ? { image } : {}),
       ...(note && note.trim() ? { note: note.trim() } : {}),
+      ...(objects && objects.length > 0 ? { objects } : {}),
     },
   };
 };
@@ -1190,6 +1208,9 @@ export const serialiseProject = (
         ...(scene.hideOverlay ? { hideOverlay: true } : {}),
         ...(scene.image ? { image: scene.image } : {}),
         ...(scene.note ? { visualNote: scene.note } : {}),
+        ...(scene.objects && scene.objects.length > 0
+          ? { objects: scene.objects.map(serialiseObject) }
+          : {}),
       };
       start += scene.duration;
       return entry;

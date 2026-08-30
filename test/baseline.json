@@ -1,6 +1,94 @@
 {
   "reels": [
     {
+      "label": "reel:v6-mixed",
+      "scenes": 4,
+      "totalFrames": 297,
+      "frames": [
+        45,
+        96,
+        90,
+        66
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "ef69e7e6c76b4e25",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "id",
+        "objects",
+        "start",
+        "text"
+      ],
+      "elementKeys": [
+        "animation",
+        "delay",
+        "role",
+        "size",
+        "text"
+      ],
+      "importErrors": 0,
+      "importWarnings": [
+        "scenes[0].direction: SLIDE has no travel with direction \"CENTER\" — falling back to BOTTOM.",
+        "scenes[2].direction: SLIDE has no travel with direction \"CENTER\" — falling back to BOTTOM."
+      ]
+    },
+    {
+      "label": "reel:v6-objects",
+      "scenes": 1,
+      "totalFrames": 102,
+      "frames": [
+        102
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "cd970eb394bdb521",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "id",
+        "objects",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
       "label": "reel:v4-dynamic",
       "scenes": 5,
       "totalFrames": 201,

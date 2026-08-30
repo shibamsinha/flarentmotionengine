@@ -8,6 +8,7 @@
  */
 
 import type { VisualStyleConfig, VisualStyleName } from '../utils/visualStyle';
+import type { SceneObject } from './object';
 
 export type AnimationStyle = 'massive' | 'punch' | 'stack' | 'slide' | 'rapid';
 
@@ -263,6 +264,20 @@ export type Scene = {
   elements?: SceneElement[];
   /** Optional picture layer. The type composes around it. */
   image?: SceneImage;
+  /**
+   * V6 — motion-graphics objects: shapes, images, icons, cards, buttons, a
+   * cursor.
+   *
+   * Deliberately a *second* list beside `elements` rather than a replacement
+   * for it. Type keeps its own specialised model — roles, semantic sizes,
+   * compositions, visual styles — because that model is what the engine is
+   * good at, and a generic box would throw all of it away. A scene without
+   * this key takes exactly the code path it did before V6, which is the whole
+   * backward-compatibility story in one sentence.
+   *
+   * Objects render above the type unless they carry a negative `layer`.
+   */
+  objects?: SceneObject[];
   /**
    * Drop the project's static overlay for this scene only.
    *

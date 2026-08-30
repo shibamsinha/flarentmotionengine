@@ -14,6 +14,8 @@ import { Outgoing } from '../components/motion/Outgoing';
 import { planTransition } from '../utils/transition';
 import { resolveStyle } from '../utils/visualStyle';
 import { useFontsReady } from '../utils/fonts';
+import { planObjects } from '../utils/planObjects';
+import { ObjectLayer } from '../components/motion/ObjectLayer';
 
 export const SceneRenderer: React.FC<{
   scene: Scene;
@@ -80,13 +82,47 @@ export const SceneRenderer: React.FC<{
     return planTransition(previousPlan, plan, fps, fieldChanges);
   }, [previousPlan, plan, fps, palette]);
 
+  /**
+   * V6 objects. Planned separately from the type and, unlike it, without
+   * waiting on `fontsReady` — a rounded rectangle needs no glyph measurement,
+   * and holding the graphics back until the faces load would make them appear
+   * a frame or two late.
+   */
+  const objectPlan = useMemo(
+    () => planObjects(scene.objects, durationInFrames, fps),
+    [scene.objects, durationInFrames, fps],
+  );
+
   const background = plan
     ? backgroundForFrame(plan, frame, palette)
     : scene.background;
   const theme = themeFor(background, palette, fields);
 
+  /**
+   * Objects split around the type by `layer`: negative sits behind it, which is
+   * how "put the card behind the headline" is said without a layer panel.
+   * Sorted already by the planner, so this is a partition, not a re-sort.
+   */
+  const behindType = objectPlan.objects.filter((o) => o.layer < 0);
+  const inFrontOfType = objectPlan.objects.filter((o) => o.layer >= 0);
+
   if (!plan) {
-    return <AbsoluteFill style={{ backgroundColor: theme.background }} />;
+    /*
+     * Type is still measuring. Objects need no font, so they draw anyway —
+     * otherwise a scene that is mostly graphics would flash empty while the
+     * faces load.
+     */
+    return (
+      <AbsoluteFill style={{ backgroundColor: theme.background }}>
+        <ObjectLayer
+          plan={objectPlan}
+          frame={frame}
+          fps={fps}
+          canvas={canvas}
+          theme={theme}
+        />
+      </AbsoluteFill>
+    );
   }
 
   const picture = scene.image ? (
@@ -108,6 +144,15 @@ export const SceneRenderer: React.FC<{
   return (
     <AbsoluteFill style={{ backgroundColor: theme.background }}>
       {inFront ? null : picture}
+      {behindType.length > 0 ? (
+        <ObjectLayer
+          plan={{ ...objectPlan, objects: behindType }}
+          frame={frame}
+          fps={fps}
+          canvas={canvas}
+          theme={theme}
+        />
+      ) : null}
       <AbsoluteFill style={{ overflow: 'visible' }}>
         {previousPlan && transition ? (
           <Outgoing
@@ -149,6 +194,19 @@ export const SceneRenderer: React.FC<{
           );
         })}
       </AbsoluteFill>
+      {/* V6 objects over the type. Above the free-placed picture too, since a
+          cursor or a button is the subject of the frame, not a backdrop. */}
+      {inFrontOfType.length > 0 ? (
+        <AbsoluteFill style={{ overflow: 'visible' }}>
+          <ObjectLayer
+            plan={{ ...objectPlan, objects: inFrontOfType }}
+            frame={frame}
+            fps={fps}
+            canvas={canvas}
+            theme={theme}
+          />
+        </AbsoluteFill>
+      ) : null}
       {inFront ? picture : null}
     </AbsoluteFill>
   );
