@@ -477,6 +477,44 @@ select {
   gap: 12px;
 }
 
+/*
+   Single-line and select variants of .text-input.
+   Only `textarea.text-input` was ever styled, because until V6 nothing else
+   used the class — an <input class="text-input"> therefore rendered as a white
+   OS control in the middle of a dark panel.
+*/
+input.text-input,
+select.text-input {
+  width: 100%;
+  padding: 7px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+select.text-input {
+  /* The OS select chrome is opaque and light; suppress it and draw our own. */
+  appearance: none;
+  padding-right: 22px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-faint) 50%),
+                    linear-gradient(135deg, var(--text-faint) 50%, transparent 50%);
+  background-position: right 11px center, right 7px center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+input.text-input:focus,
+select.text-input:focus {
+  border-color: var(--line-strong);
+}
+
+input.text-input::placeholder {
+  color: var(--text-faint);
+}
+
 textarea.text-input {
   width: 100%;
   min-height: 76px;
@@ -2032,4 +2070,120 @@ textarea.import-input {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--text);
+}
+
+/* Sample-document actions, on the row that labels the paste box. */
+.import-sample {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 8px;
+}
+
+.import-sample .import-or {
+  margin: 0;
+}
+
+.import-sample .spacer {
+  flex: 1;
+}
+
+/* ------------------------------------------------------- V6 object editor */
+
+/* The object list borrows .scene-row wholesale — same affordance, same
+   muscle memory — and adds a kind chip and depth indentation. */
+/* .scene-row is a five-column grid (swatch, index, label, duration, style).
+   An object row has three things to say, so it needs its own tracks — inherited
+   ones would drop the kind chip into the 9px swatch column. */
+.object-row {
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.object-kind {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.object-row .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.object-row.is-active .object-kind {
+  color: var(--accent);
+}
+
+/* The add menu is a list of named things with a line of what each is for,
+   rather than a grid of icons nobody can tell apart. */
+.object-add {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.object-add-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  text-align: left;
+}
+
+.object-add-item:hover {
+  background: var(--bg-input);
+  border-color: var(--line-strong);
+}
+
+.object-add-name {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.object-add-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* A swatch beside the hex, because a colour is a colour. */
+.colour-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.colour-row input[type='color'] {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: none;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.colour-row .text-input {
+  min-width: 0;
+}
+
+.cursor-stop {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.cursor-stop .section-head {
+  padding: 0 0 6px;
+  border: none;
 }

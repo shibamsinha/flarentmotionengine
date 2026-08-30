@@ -945,5 +945,53 @@
       "warnings": [],
       "schemaHash": "4c917cc7923dabd5"
     }
-  ]
+  ],
+  "sample": {
+    "label": "sample",
+    "ok": true,
+    "scenes": 4,
+    "lines": 217,
+    "objectKinds": [
+      "BUTTON",
+      "CARD",
+      "CURSOR",
+      "ICON"
+    ],
+    "sceneKeys": [
+      "alignment",
+      "animation",
+      "background",
+      "case",
+      "composition",
+      "direction",
+      "duration",
+      "elements",
+      "emphasis",
+      "id",
+      "objects",
+      "start",
+      "text",
+      "visualStyle"
+    ],
+    "objectKeys": [
+      "body",
+      "color",
+      "height",
+      "icon",
+      "id",
+      "label",
+      "motion",
+      "start",
+      "stateStyles",
+      "stops",
+      "surface",
+      "title",
+      "type",
+      "width",
+      "x",
+      "y"
+    ],
+    "warnings": [],
+    "schemaHash": "733f2e3133f7b192"
+  }
 }

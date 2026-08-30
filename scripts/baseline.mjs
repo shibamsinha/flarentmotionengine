@@ -67,6 +67,7 @@ writeFileSync(
 import { PRESETS } from ${JSON.stringify(path.join(ROOT, 'src/data/presets'))};
 import { serialiseProject, parseFlarentScript } from ${JSON.stringify(path.join(ROOT, 'src/utils/importScript'))};
 import { buildTimeline, totalFrames, CANVAS } from ${JSON.stringify(path.join(ROOT, 'src/utils/timing'))};
+import { sampleProjectJson } from ${JSON.stringify(path.join(ROOT, 'src/data/sampleProject'))};
 
 const keysOf = (obj: any, into: Set<string>) => {
   for (const k of Object.keys(obj ?? {})) into.add(k);
@@ -161,6 +162,48 @@ export const collect = () => {
 };
 
 /**
+ * The sample offered on the import screen is documentation people copy, so it
+ * has to stay valid as the schema grows. It is generated through the real
+ * serialiser and therefore cannot be syntactically wrong — what this catches is
+ * the sample silently ceasing to *demonstrate* something, or starting to emit
+ * import warnings a reader would copy along with it.
+ */
+export const sample = () => {
+  const json = sampleProjectJson();
+  const r = parseFlarentScript(json);
+  if (!r.ok) {
+    return { label: 'sample', ok: false,
+             errors: r.issues.filter((i: any) => i.severity === 'error')
+                             .map((i: any) => (i.path ? i.path + ': ' : '') + i.message).sort() };
+  }
+  const doc = JSON.parse(json);
+  const sceneKeys = new Set<string>(); const objectKeys = new Set<string>();
+  const kinds = new Set<string>();
+  const walk = (list: any[]) => {
+    for (const o of list ?? []) {
+      keysOf(o, objectKeys); kinds.add(o.type);
+      if (o.children) walk(o.children);
+    }
+  };
+  for (const s of doc.scenes ?? []) { keysOf(s, sceneKeys); walk(s.objects); }
+  return {
+    label: 'sample', ok: true,
+    scenes: r.project.scenes.length,
+    // String.fromCharCode(10), not a newline escape: this source sits inside
+    // a template literal, where the escape would be consumed before esbuild
+    // ever sees it and would break the generated file.
+    lines: json.split(String.fromCharCode(10)).length,
+    objectKinds: [...kinds].sort(),
+    sceneKeys: [...sceneKeys].sort(),
+    objectKeys: [...objectKeys].sort(),
+    // Anything a reader would copy along with the sample.
+    warnings: r.issues.filter((i: any) => i.severity === 'warning')
+                      .map((i: any) => (i.path ? i.path + ': ' : '') + i.message).sort(),
+    json: normalise(doc),
+  };
+};
+
+/**
  * Templates get the same treatment as reels, not just a parse check. They are
  * the documents that actually exercise \`image\`, \`overlay\`, \`visualNote\` and
  * \`scale\` — no Reference Reel uses any of them — so without serialising them
@@ -242,7 +285,14 @@ const templates = ['script-template.json', 'script-full-reference.json',
 
 rmSync(work, { recursive: true, force: true });
 
-const current = { reels, templates };
+const sampleRow = (() => {
+  const row = mod.sample();
+  if (!row.ok) return row;
+  const { json, ...rest } = row;
+  return { ...rest, schemaHash: sha(json) };
+})();
+
+const current = { reels, templates, sample: sampleRow };
 
 if (write) {
   writeFileSync(BASELINE, JSON.stringify(current, null, 2) + '\n');
@@ -306,10 +356,17 @@ for (const t of current.templates) {
   if (!t.ok) failures.push(`${t.label} · no longer parses: ${(t.errors ?? []).join('; ')}`);
   else if (!t.roundTripIdempotent) failures.push(`${t.label} · round-trip does not settle`);
 }
+compare(previous.sample, current.sample, 'sample');
+if (!current.sample.ok) {
+  failures.push(`sample · the import screen's sample no longer parses: ${(current.sample.errors ?? []).join('; ')}`);
+} else if (current.sample.warnings.length > 0) {
+  failures.push(`sample · emits import warnings a reader would copy: ${current.sample.warnings.join('; ')}`);
+}
 
 if (failures.length === 0) {
   console.log(
     `baseline OK — ${current.reels.length} reels, ${current.templates.length} templates, ` +
+    `sample (${current.sample.lines} lines, ${(current.sample.objectKinds ?? []).length} object kinds), ` +
     `round-trip settles, no schema drift`,
   );
   process.exit(0);

@@ -46,6 +46,22 @@ import { Transport } from './components/editor/Transport';
 import { ImageStage } from './components/editor/ImageStage';
 import { OverlayControls } from './components/editor/OverlayControls';
 import { OverlayStage } from './components/editor/OverlayStage';
+import { ObjectList } from './components/editor/ObjectList';
+import { ObjectInspector } from './components/editor/ObjectInspector';
+import { ObjectStage } from './components/editor/ObjectStage';
+import type { ObjectKind, SceneObject } from './types/object';
+import {
+  addObject,
+  duplicateObject,
+  findObject,
+  flattenObjects,
+  newObject,
+  objectTitle,
+  removeObject,
+  reorderObject,
+  updateObject,
+} from './data/objects';
+import { themeFor } from './utils/typography';
 import { clearProject, saveProject } from './utils/persistence';
 import type { ImportedProject } from './utils/importScript';
 import type { FieldOverrides } from './utils/typography';
@@ -75,6 +91,8 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
   const [canvasTarget, setCanvasTarget] = useState<'image' | 'overlay' | null>(
     null,
   );
+  /** V6 — which object the object list and the canvas box are pointed at. */
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [saved, setSaved] = useState(true);
   const playerRef = useRef<PlayerRef | null>(null);
@@ -151,6 +169,13 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
   useEffect(() => {
     if (!selectedId && scenes.length > 0) setSelectedId(scenes[0].id);
   }, [scenes, selectedId]);
+
+  // Objects belong to a scene, so a scene change drops the object selection —
+  // otherwise the inspector would keep editing an object that is no longer on
+  // screen, and the canvas box would sit over a different scene's frame.
+  useEffect(() => {
+    setSelectedObjectId(null);
+  }, [selectedId]);
 
   const seek = useCallback((target: number) => {
     playerRef.current?.seekTo(target);
@@ -234,6 +259,65 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
       selectScene(next[target].id, next);
     },
     [scenes, selectedId, selectScene],
+  );
+
+  /* --------------------------------------------------------- V6 objects */
+
+  /**
+   * Every object edit is the same shape: rewrite the selected scene's `objects`
+   * and hand it to `updateScene`, which already knows how to patch a scene.
+   * Nothing here reaches into the renderer or the planner.
+   */
+  const withObjects = useCallback(
+    (fn: (objects: SceneObject[]) => SceneObject[]) => {
+      if (!selected) return;
+      updateScene({ objects: fn(selected.objects ?? []) });
+    },
+    [selected, updateScene],
+  );
+
+  const addSceneObject = useCallback(
+    (kind: ObjectKind) => {
+      const object = newObject(kind);
+      // Dropped into the selected object when that object can hold children,
+      // so "add a button to this card" is one click rather than a re-parent.
+      const parent = selectedObjectId
+        ? findObject(selected?.objects, selectedObjectId)
+        : null;
+      const into = parent && (parent.type === 'card' || parent.type === 'group')
+        ? parent.id
+        : null;
+      withObjects((objects) => addObject(objects, object, into));
+      setSelectedObjectId(object.id);
+    },
+    [withObjects, selected, selectedObjectId],
+  );
+
+  const patchObject = useCallback(
+    (patch: Partial<SceneObject>) => {
+      if (!selectedObjectId) return;
+      withObjects((objects) => updateObject(objects, selectedObjectId, patch));
+    },
+    [withObjects, selectedObjectId],
+  );
+
+  const deleteObject = useCallback(() => {
+    if (!selectedObjectId) return;
+    withObjects((objects) => removeObject(objects, selectedObjectId));
+    setSelectedObjectId(null);
+  }, [withObjects, selectedObjectId]);
+
+  const duplicateSceneObject = useCallback(() => {
+    if (!selectedObjectId) return;
+    withObjects((objects) => duplicateObject(objects, selectedObjectId));
+  }, [withObjects, selectedObjectId]);
+
+  const reorderSceneObject = useCallback(
+    (to: 'front' | 'back' | 'forward' | 'backward') => {
+      if (!selectedObjectId) return;
+      withObjects((objects) => reorderObject(objects, selectedObjectId, to));
+    },
+    [withObjects, selectedObjectId],
   );
 
   const resetProject = useCallback(() => {
@@ -444,6 +528,16 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
               onSelect={() => setCanvasTarget('overlay')}
               onChange={setOverlay}
             />
+            {/* V6 — the selected object's box. Last, so its handles are the
+                ones you reach when boxes overlap. */}
+            <ObjectStage
+              objects={selected?.objects}
+              selectedId={selectedObjectId}
+              canvas={canvas}
+              active={!playing && selectedIsOnScreen}
+              onSelect={setSelectedObjectId}
+              onChange={patchObject}
+            />
           </div>
         </div>
 
@@ -465,6 +559,30 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
             hasOverlay={overlay !== null}
             onChange={updateScene}
             canvas={canvas}
+          />
+          {/*
+            V6 — objects live below the scene's own controls: a scene is still
+            primarily its type, and the graphics sit on top of it.
+          */}
+          <ObjectList
+            objects={selected?.objects}
+            selectedId={selectedObjectId}
+            onSelect={setSelectedObjectId}
+            onAdd={addSceneObject}
+            onDuplicate={duplicateSceneObject}
+            onDelete={deleteObject}
+            onReorder={reorderSceneObject}
+          />
+          <ObjectInspector
+            object={
+              selectedObjectId ? findObject(selected?.objects, selectedObjectId) : null
+            }
+            ink={themeFor(selected?.background ?? 'green', palette, fields).ink}
+            onChange={patchObject}
+            targets={flattenObjects(selected?.objects).map(({ object }) => ({
+              id: object.id,
+              label: objectTitle(object),
+            }))}
           />
           <OverlayControls
             overlay={overlay}

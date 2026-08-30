@@ -409,3 +409,156 @@ Landscape is not portrait cropped or letterboxed — the whole type system
 replans against the new frame's own 1920×1080 proportions, so margins, the
 type scale, composition spacing and every semantic size and position resolve
 correctly for the wider frame rather than being stretched onto it.
+
+---
+
+# V6 — objects (motion graphics)
+
+A scene may carry `objects` alongside its text. Text is unchanged: `text`,
+`elements`, `composition` and `visualStyle` all behave exactly as before, and a
+document with no `objects` key is read by exactly the code that read it in V5.
+
+A scene needs **text, `elements`, or `objects`** — a scene made only of
+graphics is legal.
+
+```json
+{
+  "duration": 3,
+  "text": "ONE TAP",
+  "animation": "PUNCH",
+  "background": "BLACK",
+  "composition": "TOP_STATEMENT",
+  "elements": [{ "text": "ONE TAP", "role": "SECONDARY" }],
+  "objects": [
+    {
+      "id": "card-1",
+      "type": "CARD",
+      "x": 0.12, "y": 0.32, "width": 0.76, "height": 0.26,
+      "surface": { "fill": "#16181B", "radius": 0.09, "shadow": "STRONG" },
+      "title": { "text": "Upload your file", "size": 0.04, "weight": 600 },
+      "motion": { "enter": "FLOAT_IN", "speed": "MEDIUM" }
+    }
+  ]
+}
+```
+
+## Geometry and timing
+
+`x`, `y`, `width`, `height` are **fractions of the parent**, top-left origin —
+of the frame for a top-level object, of the container for a child. Values
+outside `0..1` bleed off the edge on purpose. Fractions rather than pixels so a
+scene composes unchanged in portrait and landscape.
+
+`start` and `duration` are **seconds from the start of the scene**. Omit
+`duration` to run to the end of the scene. Never frames.
+
+`layer` sets paint order; negative puts the object *behind* the scene's type.
+Without it, objects paint in array order, above the type.
+
+## `type`
+
+| type | carries |
+|---|---|
+| `SHAPE` | `shape`: `RECTANGLE` `ROUNDED` `CIRCLE` `LINE` |
+| `IMAGE` / `LOGO` | `src` (a `public/` path or an http(s) URL), `fit`: `CONTAIN` `COVER` |
+| `ICON` | `icon`, `color`, `weight` |
+| `CARD` | `title`, `body`, `surface`, `children` |
+| `BUTTON` | `label`, `icon`, `surface`, `stateStyles` |
+| `CURSOR` | `stops` |
+| `GROUP` | `children`, `sequence`, `stagger` |
+
+`ICON` names: `CHECK` `PLUS` `UPLOAD` `DOWNLOAD` `FOLDER` `FILE` `CAMERA`
+`SCAN` `SEARCH` `ARROW_RIGHT` `CHEVRON_RIGHT` `CLOSE` `HEART` `STAR` `BELL`
+`USER` `LOCK` `PLAY`.
+
+## `motion` — intent, not keyframes
+
+```json
+"motion": {
+  "enter": "SLIDE_IN", "from": "LEFT", "speed": "FAST", "distance": "MEDIUM",
+  "emphasis": "PULSE",
+  "exit": "FADE_OUT",
+  "delay": 0.3
+}
+```
+
+- **`enter`** — `FADE_IN` `SLIDE_IN` `RISE_IN` `POP_IN` `SCALE_IN` `REVEAL`
+  `FLOAT_IN` `DRAW_IN`
+- **`emphasis`** (loops while on screen) — `PULSE` `POP` `SHAKE` `FLOAT`
+  `GLOW` `BOUNCE`
+- **`exit`** — `FADE_OUT` `SLIDE_OUT` `SCALE_OUT` `SHRINK` `REVEAL_OUT`
+- **`speed`** `SLOW` `MEDIUM` `FAST` · **`distance`** `SMALL` `MEDIUM` `LARGE`
+  · **`from`/`exitTo`** `LEFT` `RIGHT` `TOP` `BOTTOM`
+
+Each preset is a recipe over several channels at once — `FLOAT_IN` is opacity,
+a rise, a slight scale and a blur that burns off early. Do not try to express
+one by combining others; pick the name that matches the intent.
+
+`DRAW_IN` strokes an icon on. It is only meaningful on `ICON` and `LINE`.
+
+## `surface` — how something is painted
+
+`fill`, `stroke`, `strokeWidth`, `radius` (fraction of the shorter side, `0..0.5`),
+`shadow` (`NONE` `SOFT` `MEDIUM` `STRONG`), `glow` (`NONE` `LOW` `MEDIUM` `HIGH`),
+`glowColor`, `blur`.
+
+## States and the cursor
+
+A `BUTTON` declares how it looks in each state; only the states that differ
+need an entry.
+
+```json
+{
+  "id": "button-1", "type": "BUTTON",
+  "label": { "text": "Upload" },
+  "surface": { "fill": "#F2F4F2", "radius": 0.5 },
+  "stateStyles": {
+    "SUCCESS": { "fill": "#4ADE6A", "glow": "MEDIUM",
+                 "label": { "text": "Uploaded" } }
+  }
+}
+```
+
+A cursor moves between `stops` and can drive another object's state on arrival:
+
+```json
+{
+  "id": "pointer-1", "type": "CURSOR",
+  "stops": [
+    { "x": 0.85, "y": 0.92, "at": 0 },
+    { "x": 0.50, "y": 0.67, "at": 1.6, "travel": 0.8, "path": "ARC" },
+    { "x": 0.50, "y": 0.67, "at": 1.9, "action": "CLICK",
+      "targetId": "button-1", "targetState": "SUCCESS" }
+  ]
+}
+```
+
+States: `DEFAULT` `HOVER` `PRESSED` `ACTIVE` `SUCCESS` `ERROR`.
+Actions: `CLICK` `PRESS` `RELEASE` `HOVER`. Paths: `STRAIGHT` `ARC` `CURVE`.
+
+## Groups and sequencing
+
+`CARD` and `GROUP` hold `children`, addressed in **the container's** fractions.
+Moving the container moves them all; each may still animate on its own.
+
+`"sequence"`: `TOGETHER` (default) · `AFTER` (each waits for the previous
+entrance) · `STAGGER` with `"stagger": 0.15` seconds between children.
+
+## V6 prompt block
+
+> Scenes may contain `objects` as well as text. Use objects for anything that
+> is not type: cards, buttons, icons, shapes, images, a cursor.
+>
+> Position everything in fractions of the frame (`0..1`, top-left origin) and
+> time everything in seconds from the start of the scene.
+>
+> Choose motion by intent — `POP_IN`, `FLOAT_IN`, `SLIDE_IN` with a `from`
+> edge — never by describing coordinates or curves. Add `emphasis` only when
+> something should keep moving after it arrives.
+>
+> To show an interaction: give the button a `SUCCESS` entry in `stateStyles`,
+> add a `CURSOR` whose last stop has `"action": "CLICK"` and points at the
+> button's `id`, and let a `CHECK` icon `DRAW_IN` just after.
+>
+> Keep typography doing the talking. Objects support the words; they do not
+> replace them.
