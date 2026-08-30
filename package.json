@@ -11,7 +11,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "studio": "remotion studio src/remotion/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "baseline": "node scripts/baseline.mjs",
+    "baseline:write": "node scripts/baseline.mjs --write",
+    "check": "tsc --noEmit && node scripts/baseline.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

@@ -1,0 +1,861 @@
+{
+  "reels": [
+    {
+      "label": "reel:v4-dynamic",
+      "scenes": 5,
+      "totalFrames": 201,
+      "frames": [
+        30,
+        33,
+        39,
+        39,
+        60
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "910c8f6f7963db18",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "id",
+        "start",
+        "styleConfig",
+        "text",
+        "visualStyle"
+      ],
+      "elementKeys": [
+        "role",
+        "size",
+        "text"
+      ],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:v4-reel",
+      "scenes": 9,
+      "totalFrames": 432,
+      "frames": [
+        30,
+        48,
+        45,
+        60,
+        33,
+        60,
+        54,
+        30,
+        72
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "c96dec4ee189b6f2",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text",
+        "visualStyle"
+      ],
+      "elementKeys": [
+        "animation",
+        "delay",
+        "position",
+        "role",
+        "size",
+        "text",
+        "visualStyle"
+      ],
+      "importErrors": 0,
+      "importWarnings": [
+        "scenes[0].direction: SLIDE has no travel with direction \"CENTER\" — falling back to BOTTOM.",
+        "scenes[2].direction: SLIDE has no travel with direction \"CENTER\" — falling back to BOTTOM.",
+        "scenes[4].direction: SLIDE has no travel with direction \"CENTER\" — falling back to BOTTOM.",
+        "scenes[7].direction: SLIDE has no travel with direction \"CENTER\" — falling back to BOTTOM."
+      ]
+    },
+    {
+      "label": "reel:v4-styles",
+      "scenes": 5,
+      "totalFrames": 192,
+      "frames": [
+        36,
+        36,
+        36,
+        36,
+        48
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "c3aa8440909a6ef7",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "id",
+        "start",
+        "text",
+        "visualStyle"
+      ],
+      "elementKeys": [
+        "role",
+        "size",
+        "text"
+      ],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:v3",
+      "scenes": 9,
+      "totalFrames": 432,
+      "frames": [
+        30,
+        48,
+        45,
+        60,
+        33,
+        60,
+        54,
+        30,
+        72
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "8333e4e2eac620c3",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [
+        "animation",
+        "delay",
+        "position",
+        "role",
+        "size",
+        "text"
+      ],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:v3-hierarchy",
+      "scenes": 4,
+      "totalFrames": 270,
+      "frames": [
+        66,
+        66,
+        66,
+        72
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "d20484d88fc76de6",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [
+        "animation",
+        "delay",
+        "position",
+        "role",
+        "size",
+        "text"
+      ],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:v3-oversized",
+      "scenes": 5,
+      "totalFrames": 216,
+      "frames": [
+        36,
+        36,
+        48,
+        42,
+        54
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "eec5276fd29b7fac",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [
+        "animation",
+        "delay",
+        "position",
+        "role",
+        "size",
+        "text"
+      ],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:v3-long",
+      "scenes": 10,
+      "totalFrames": 570,
+      "frames": [
+        54,
+        57,
+        51,
+        60,
+        48,
+        60,
+        51,
+        54,
+        45,
+        90
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "a05365a8114591ee",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [
+        "animation",
+        "delay",
+        "position",
+        "role",
+        "size",
+        "text"
+      ],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:reference",
+      "scenes": 9,
+      "totalFrames": 225,
+      "frames": [
+        26,
+        23,
+        18,
+        20,
+        18,
+        15,
+        57,
+        21,
+        27
+      ],
+      "roundTripStable": false,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [
+        {
+          "i": 0,
+          "from": 0.85,
+          "to": 0.867
+        },
+        {
+          "i": 1,
+          "from": 0.75,
+          "to": 0.733
+        },
+        {
+          "i": 3,
+          "from": 0.65,
+          "to": 0.667
+        }
+      ],
+      "schemaHash": "137154b744610209",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": [
+        "scenes: Authored 7.45s snapped to 7.467s (224 frames at 30fps)."
+      ]
+    },
+    {
+      "label": "reel:v2",
+      "scenes": 7,
+      "totalFrames": 270,
+      "frames": [
+        30,
+        45,
+        33,
+        45,
+        21,
+        36,
+        60
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "3ec75a65cf59be87",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:v2-long",
+      "scenes": 11,
+      "totalFrames": 540,
+      "frames": [
+        36,
+        51,
+        51,
+        51,
+        57,
+        39,
+        45,
+        39,
+        60,
+        42,
+        69
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "a5b64e58d9e05189",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:5s",
+      "scenes": 5,
+      "totalFrames": 150,
+      "frames": [
+        27,
+        21,
+        36,
+        24,
+        42
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "e3187dd195b1173b",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:8s",
+      "scenes": 7,
+      "totalFrames": 240,
+      "frames": [
+        30,
+        21,
+        33,
+        48,
+        24,
+        33,
+        51
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "867b81118dca3b1a",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": []
+    },
+    {
+      "label": "reel:19s",
+      "scenes": 17,
+      "totalFrames": 570,
+      "frames": [
+        26,
+        23,
+        18,
+        20,
+        18,
+        15,
+        57,
+        21,
+        27,
+        30,
+        27,
+        39,
+        78,
+        33,
+        42,
+        36,
+        60
+      ],
+      "roundTripStable": false,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [
+        {
+          "i": 0,
+          "from": 0.85,
+          "to": 0.867
+        },
+        {
+          "i": 1,
+          "from": 0.75,
+          "to": 0.733
+        },
+        {
+          "i": 3,
+          "from": 0.65,
+          "to": 0.667
+        },
+        {
+          "i": 9,
+          "from": 1,
+          "to": 0.967
+        },
+        {
+          "i": 10,
+          "from": 0.9,
+          "to": 0.933
+        }
+      ],
+      "schemaHash": "0a9895cbb3deb6c5",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": [
+        "scenes: Authored 18.95s snapped to 18.967s (569 frames at 30fps)."
+      ]
+    },
+    {
+      "label": "reel:30s",
+      "scenes": 21,
+      "totalFrames": 900,
+      "frames": [
+        36,
+        30,
+        45,
+        27,
+        84,
+        39,
+        48,
+        30,
+        51,
+        33,
+        30,
+        42,
+        72,
+        45,
+        36,
+        27,
+        48,
+        36,
+        30,
+        42,
+        69
+      ],
+      "roundTripStable": true,
+      "roundTripIdempotent": true,
+      "durationsSnapped": [],
+      "schemaHash": "6d9b3ee6ab310b27",
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text"
+      ],
+      "elementKeys": [],
+      "importErrors": 0,
+      "importWarnings": []
+    }
+  ],
+  "templates": [
+    {
+      "label": "template:script-template.json",
+      "ok": true,
+      "scenes": 5,
+      "roundTripIdempotent": true,
+      "docKeys": [
+        "backgroundPalette",
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "start",
+        "text",
+        "visualNote"
+      ],
+      "elementKeys": [],
+      "format": "portrait",
+      "palette": "forest",
+      "title": "Untitled reel",
+      "totalFrames": 126,
+      "warnings": [],
+      "schemaHash": "bfdeadb7b4b2ead0"
+    },
+    {
+      "label": "template:script-full-reference.json",
+      "ok": true,
+      "scenes": 4,
+      "roundTripIdempotent": true,
+      "docKeys": [
+        "backgroundPalette",
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "direction",
+        "duration",
+        "emphasis",
+        "flipBackground",
+        "id",
+        "image",
+        "scale",
+        "start",
+        "text",
+        "visualNote"
+      ],
+      "elementKeys": [],
+      "format": "portrait",
+      "palette": "ink",
+      "title": "Every field the importer reads",
+      "totalFrames": 102,
+      "warnings": [],
+      "schemaHash": "8af569ff79e13b36"
+    },
+    {
+      "label": "template:script-v3-composition.json",
+      "ok": true,
+      "scenes": 2,
+      "roundTripIdempotent": true,
+      "docKeys": [
+        "estimatedDuration",
+        "format",
+        "fps",
+        "height",
+        "scenes",
+        "title",
+        "width"
+      ],
+      "sceneKeys": [
+        "alignment",
+        "animation",
+        "background",
+        "case",
+        "composition",
+        "direction",
+        "duration",
+        "elements",
+        "emphasis",
+        "id",
+        "start",
+        "text",
+        "visualNote"
+      ],
+      "elementKeys": [
+        "animation",
+        "delay",
+        "from",
+        "position",
+        "role",
+        "size",
+        "text"
+      ],
+      "format": "portrait",
+      "palette": "forest",
+      "title": "V3 composition template",
+      "totalFrames": 132,
+      "warnings": [],
+      "schemaHash": "4c917cc7923dabd5"
+    }
+  ]
+}
