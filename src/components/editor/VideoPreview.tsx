@@ -3,6 +3,7 @@ import { Player, type PlayerRef } from '@remotion/player';
 import { FlarentVideo } from '../../compositions/FlarentVideo';
 import type { CanvasFormat, OverlayImage, PaletteName, Scene } from '../../types/scene';
 import type { FieldOverrides } from '../../utils/typography';
+import type { ProjectAudio } from '../../types/audio';
 import { CANVAS, canvasFor, totalFrames } from '../../utils/timing';
 
 export const VideoPreview: React.FC<{
@@ -11,15 +12,21 @@ export const VideoPreview: React.FC<{
   format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
+  /** V7 — passed into the composition so the Player drives it from its own clock. */
+  audio: ProjectAudio | null;
   playerRef: React.RefObject<PlayerRef | null>;
   onFrame: (frame: number) => void;
   onPlayingChange: (playing: boolean) => void;
-}> = ({ scenes, palette, format, fields, overlay, playerRef, onFrame, onPlayingChange }) => {
+}> = ({ scenes, palette, format, fields, overlay, audio, playerRef, onFrame, onPlayingChange }) => {
   const durationInFrames = totalFrames(scenes, CANVAS.fps);
   const canvas = useMemo(() => canvasFor(format), [format]);
   const inputProps = useMemo(
-    () => ({ scenes, palette, format, fields, ...(overlay ? { overlay } : {}) }),
-    [scenes, palette, format, fields, overlay],
+    () => ({
+      scenes, palette, format, fields,
+      ...(overlay ? { overlay } : {}),
+      ...(audio ? { audio } : {}),
+    }),
+    [scenes, palette, format, fields, overlay, audio],
   );
 
   useEffect(() => {

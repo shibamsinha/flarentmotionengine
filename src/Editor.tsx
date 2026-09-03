@@ -46,6 +46,8 @@ import { Transport } from './components/editor/Transport';
 import { ImageStage } from './components/editor/ImageStage';
 import { OverlayControls } from './components/editor/OverlayControls';
 import { OverlayStage } from './components/editor/OverlayStage';
+import { AudioControls } from './components/editor/AudioControls';
+import type { ProjectAudio } from './types/audio';
 import { ObjectList } from './components/editor/ObjectList';
 import { ObjectInspector } from './components/editor/ObjectInspector';
 import { ObjectStage } from './components/editor/ObjectStage';
@@ -80,6 +82,11 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
   const [fields, setFields] = useState<FieldOverrides>(initial.fields);
   const [title, setTitle] = useState<string | null>(initial.title);
   const [overlay, setOverlay] = useState<OverlayImage | null>(initial.overlay);
+  /**
+   * V7 — the project's audio. Peer of `overlay`, not of anything in `scenes`:
+   * editing a scene's duration must never move or restart it.
+   */
+  const [audio, setAudio] = useState<ProjectAudio | null>(initial.audio);
   const [importOpen, setImportOpen] = useState(false);
   const [extractOpen, setExtractOpen] = useState(false);
   const [frame, setFrame] = useState(0);
@@ -128,7 +135,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
    */
   useEffect(() => {
     setSaved(false);
-    const snapshot = { scenes, palette, format, fields, overlay, title, selectedId };
+    const snapshot = { scenes, palette, format, fields, overlay, audio, title, selectedId };
     const timer = window.setTimeout(() => {
       setSaved(saveProject(snapshot));
     }, 400);
@@ -143,7 +150,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
       window.removeEventListener('visibilitychange', flush);
       window.removeEventListener('pagehide', flush);
     };
-  }, [scenes, palette, format, fields, overlay, title, selectedId]);
+  }, [scenes, palette, format, fields, overlay, audio, title, selectedId]);
 
   // Escape is the other half of clicking away — reachable when the object
   // fills the frame and there is no empty canvas left to click.
@@ -328,6 +335,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
     setFormat(DEFAULT_FORMAT);
     setFields({});
     setOverlay(null);
+    setAudio(null);
     setTitle(null);
     setSelectedId(next[0]?.id ?? null);
     seek(0);
@@ -358,6 +366,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
       setFormat(project.format);
       setFields(project.fields);
       setOverlay(project.overlay);
+      setAudio(project.audio);
       setTitle(project.title);
       setSelectedId(project.scenes[0]?.id ?? null);
       seek(0);
@@ -495,6 +504,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
               format={format}
               fields={fields}
               overlay={overlay}
+              audio={audio}
               playerRef={playerRef}
               onFrame={setFrame}
               onPlayingChange={setPlaying}
@@ -589,6 +599,17 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
             scenes={scenes}
             onChange={setOverlay}
           />
+          {/*
+            V7 — project-level, beside the overlay rather than inside a scene.
+            `onSeekSeconds` drives the same playhead the transport does; there is
+            no second playback state anywhere in the editor.
+          */}
+          <AudioControls
+            audio={audio}
+            videoSeconds={seconds}
+            onChange={setAudio}
+            onSeekSeconds={(s) => seek(Math.round(s * CANVAS.fps))}
+          />
         </aside>
       </div>
 
@@ -601,6 +622,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
           selectedId={selectedId}
           onSelect={setSelectedId}
           onSeek={seek}
+          audio={audio}
         />
         <div className="footer-row">
           <Transport
@@ -648,6 +670,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
             format={format}
             fields={fields}
             overlay={overlay}
+            audio={audio}
             saved={saved}
           />
         </div>
@@ -660,6 +683,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
         format={format}
         fields={fields}
         overlay={overlay}
+        audio={audio}
         onClose={() => setExtractOpen(false)}
       />
 

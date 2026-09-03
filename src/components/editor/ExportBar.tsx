@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { CanvasFormat, OverlayImage, PaletteName, Scene } from '../../types/scene';
 import type { FieldOverrides } from '../../utils/typography';
+import type { ProjectAudio } from '../../types/audio';
 import { CANVAS, totalFrames } from '../../utils/timing';
 
 type Phase = 'idle' | 'starting' | 'browser' | 'bundling' | 'rendering' | 'done' | 'error';
@@ -30,8 +31,10 @@ export const ExportBar: React.FC<{
   format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
+  /** V7 — sent with the render so the MP4 carries the track. */
+  audio: ProjectAudio | null;
   saved: boolean;
-}> = ({ scenes, palette, format, fields, overlay, saved }) => {
+}> = ({ scenes, palette, format, fields, overlay, audio, saved }) => {
   const [job, setJob] = useState<JobState>({ phase: 'idle', progress: 0 });
   const pollRef = useRef<number | null>(null);
 
@@ -78,7 +81,7 @@ export const ExportBar: React.FC<{
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenes, palette, format, fields, overlay }),
+        body: JSON.stringify({ scenes, palette, format, fields, overlay, audio }),
       });
       if (!response.ok) {
         throw new Error(`Render server responded ${response.status}`);
@@ -95,7 +98,7 @@ export const ExportBar: React.FC<{
             : 'Export failed',
       });
     }
-  }, [scenes, palette, format, fields, overlay, poll]);
+  }, [scenes, palette, format, fields, overlay, audio, poll]);
 
   const busy = ['starting', 'browser', 'bundling', 'rendering'].includes(job.phase);
   const frames = totalFrames(scenes, CANVAS.fps);

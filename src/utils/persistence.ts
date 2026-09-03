@@ -26,6 +26,7 @@ import type {
   TextRole,
 } from '../types/scene';
 import type { FieldOverrides } from './typography';
+import type { ProjectAudio } from '../types/audio';
 import { VISUAL_STYLE_NAMES } from './visualStyle';
 import type { VisualStyleConfig, VisualStyleName } from './visualStyle';
 import {
@@ -48,6 +49,8 @@ export type PersistedProject = {
   format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
+  /** V7 — the project's audio track, or null. Optional in stored payloads. */
+  audio: ProjectAudio | null;
   title: string | null;
   selectedId: string | null;
 };
@@ -220,6 +223,35 @@ const sanitiseOverlay = (raw: unknown): OverlayImage | null => {
   };
 };
 
+/**
+ * The project's audio track.
+ *
+ * Dropped whole rather than half-restored, for the same reason the overlay is:
+ * a track with a lost `src` is silence the user cannot see to remove. A
+ * selection that is empty or inverted is also treated as no track — it would
+ * render nothing and show a zero-width handle nobody could grab.
+ */
+const sanitiseAudio = (raw: unknown): ProjectAudio | null => {
+  if (!isRecord(raw)) return null;
+  if (typeof raw.src !== 'string' || raw.src.trim() === '') return null;
+  const sourceStart = Math.max(0, num(raw.sourceStart) ?? 0);
+  const sourceEnd = num(raw.sourceEnd) ?? 0;
+  if (!(sourceEnd > sourceStart)) return null;
+  return {
+    src: raw.src,
+    ...(typeof raw.name === 'string' ? { name: raw.name } : {}),
+    ...(num(raw.sourceDuration) ? { sourceDuration: num(raw.sourceDuration)! } : {}),
+    sourceStart,
+    sourceEnd,
+    timelineStart: Math.max(0, num(raw.timelineStart) ?? 0),
+    volume: Math.min(1, Math.max(0, num(raw.volume) ?? 1)),
+    ...(raw.muted === true ? { muted: true } : {}),
+    ...((num(raw.fadeIn) ?? 0) > 0 ? { fadeIn: num(raw.fadeIn)! } : {}),
+    ...((num(raw.fadeOut) ?? 0) > 0 ? { fadeOut: num(raw.fadeOut)! } : {}),
+    ...(raw.loop === true ? { loop: true } : {}),
+  };
+};
+
 export const loadProject = (): PersistedProject | null => {
   if (typeof window === 'undefined') return null;
   let stored: string | null = null;
@@ -268,6 +300,8 @@ export const loadProject = (): PersistedProject | null => {
       format: parsed.format === 'landscape' ? 'landscape' : 'portrait',
       fields,
       overlay: sanitiseOverlay(parsed.overlay),
+      // Absent in every pre-V7 payload; null is the correct reading.
+      audio: sanitiseAudio(parsed.audio),
       title: typeof parsed.title === 'string' ? parsed.title : null,
       selectedId,
     };

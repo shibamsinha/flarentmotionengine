@@ -27,6 +27,7 @@ const base = (scenes: Scene[]): Project => ({
   format: DEFAULT_FORMAT,
   fields: {},
   overlay: null,
+  audio: null,
   title: null,
   selectedId: scenes[0]?.id ?? null,
 });
@@ -54,6 +55,7 @@ export const createProjectFromJSON = (imported: ImportedProject): Project => ({
   format: imported.format,
   fields: imported.fields,
   overlay: imported.overlay,
+  audio: imported.audio,
   title: imported.title,
   selectedId: imported.scenes[0]?.id ?? null,
 });
@@ -86,6 +88,7 @@ export const createProjectFromPersisted = (saved: PersistedProject): Project => 
   format: saved.format,
   fields: saved.fields,
   overlay: saved.overlay,
+  audio: saved.audio,
   title: saved.title,
   selectedId: saved.selectedId,
 });

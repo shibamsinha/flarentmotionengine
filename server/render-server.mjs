@@ -42,7 +42,34 @@ const IMAGE_TYPES = new Map([
   ['image/gif', '.gif'],
 ]);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif']);
+
+/**
+ * V7 — audio the renderer's Chrome and ffmpeg can both handle.
+ *
+ * Uploaded the same way images are, into the same `public/uploads` directory:
+ * Remotion copies `public/` into the bundle, so the headless render reads
+ * exactly the bytes the editor previewed. One asset path, one upload endpoint.
+ */
+const AUDIO_TYPES = new Map([
+  ['audio/mpeg', '.mp3'],
+  ['audio/mp3', '.mp3'],
+  ['audio/wav', '.wav'],
+  ['audio/x-wav', '.wav'],
+  ['audio/wave', '.wav'],
+  ['audio/mp4', '.m4a'],
+  ['audio/x-m4a', '.m4a'],
+  ['audio/aac', '.aac'],
+  ['audio/ogg', '.ogg'],
+  ['audio/webm', '.weba'],
+  ['audio/flac', '.flac'],
+]);
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.oga', '.weba', '.flac',
+]);
+
 const MAX_UPLOAD_BYTES = 24 * 1024 * 1024;
+/** Audio gets a larger ceiling: an uncompressed WAV runs ~10MB a minute. */
+const MAX_AUDIO_BYTES = 64 * 1024 * 1024;
 
 await fsp.mkdir(OUT_DIR, { recursive: true });
 await fsp.mkdir(UPLOAD_DIR, { recursive: true });
@@ -113,7 +140,7 @@ const slug = (scenes) => {
   return words || 'flarent';
 };
 
-const runJob = async (jobId, scenes, palette, fields, overlay, format) => {
+const runJob = async (jobId, scenes, palette, fields, overlay, format, audio) => {
   const started = Date.now();
   const set = (patch) => jobs.set(jobId, { ...jobs.get(jobId), ...patch });
 
@@ -139,6 +166,7 @@ const runJob = async (jobId, scenes, palette, fields, overlay, format) => {
       palette,
       fields,
       ...(overlay ? { overlay } : {}),
+      ...(audio ? { audio } : {}),
       ...(format === 'landscape' ? { format } : {}),
     };
 
@@ -275,10 +303,38 @@ const server = http.createServer(async (req, res) => {
         };
       }
 
+      /**
+       * V7 — the project's audio. Only accepted with a `src` and a positive
+       * selection, so a half-formed track cannot reach the composition and
+       * cause a render to fail late with a confusing ffmpeg message.
+       */
+      let audio = null;
+      if (body?.audio && typeof body.audio === 'object' &&
+          typeof body.audio.src === 'string' && body.audio.src.trim() !== '') {
+        const a = body.audio;
+        const n = (v, fallback) =>
+          typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+        const sourceStart = Math.max(0, n(a.sourceStart, 0));
+        const sourceEnd = Math.max(sourceStart, n(a.sourceEnd, sourceStart));
+        if (sourceEnd > sourceStart) {
+          audio = {
+            src: a.src.trim(),
+            sourceStart,
+            sourceEnd,
+            timelineStart: Math.max(0, n(a.timelineStart, 0)),
+            volume: Math.min(1, Math.max(0, n(a.volume, 1))),
+            ...(a.muted === true ? { muted: true } : {}),
+            ...(n(a.fadeIn, 0) > 0 ? { fadeIn: n(a.fadeIn, 0) } : {}),
+            ...(n(a.fadeOut, 0) > 0 ? { fadeOut: n(a.fadeOut, 0) } : {}),
+            ...(a.loop === true ? { loop: true } : {}),
+          };
+        }
+      }
+
       const jobId = randomUUID();
       jobs.set(jobId, { status: 'starting', progress: 0 });
       // Fire and forget — the client polls for progress.
-      void runJob(jobId, scenes, palette, fields, overlay, format);
+      void runJob(jobId, scenes, palette, fields, overlay, format, audio);
       return json(res, 202, { jobId });
     } catch (error) {
       return json(res, 400, { error: String(error) });
@@ -295,18 +351,31 @@ const server = http.createServer(async (req, res) => {
     try {
       const declared = String(url.searchParams.get('name') ?? 'image');
       const contentType = String(req.headers['content-type'] ?? '').split(';')[0];
+      const declaredExt = path.extname(declared).toLowerCase();
+
+      /*
+       * `?kind=audio` selects the audio vocabulary. The caller says what it is
+       * rather than the server guessing, because several containers (webm, mp4)
+       * are legal for both and sniffing would get it wrong exactly where it
+       * matters.
+       */
+      const kind = url.searchParams.get('kind') === 'audio' ? 'audio' : 'image';
+      const table = kind === 'audio' ? AUDIO_TYPES : IMAGE_TYPES;
+      const known = kind === 'audio' ? AUDIO_EXTENSIONS : IMAGE_EXTENSIONS;
+      const limit = kind === 'audio' ? MAX_AUDIO_BYTES : MAX_UPLOAD_BYTES;
+
       const extension =
-        IMAGE_TYPES.get(contentType) ??
-        (IMAGE_EXTENSIONS.has(path.extname(declared).toLowerCase())
-          ? path.extname(declared).toLowerCase()
-          : null);
+        table.get(contentType) ?? (known.has(declaredExt) ? declaredExt : null);
       if (!extension) {
         return json(res, 415, {
-          error: 'Unsupported image type. Use JPEG, PNG, WebP, AVIF or GIF.',
+          error:
+            kind === 'audio'
+              ? 'Unsupported audio type. Use MP3, WAV, M4A, AAC, OGG, WebM or FLAC.'
+              : 'Unsupported image type. Use JPEG, PNG, WebP, AVIF or GIF.',
         });
       }
 
-      const buffer = await readRaw(req, MAX_UPLOAD_BYTES);
+      const buffer = await readRaw(req, limit);
       if (buffer.length === 0) return json(res, 400, { error: 'Empty upload' });
 
       // Content-addressed: re-uploading the same picture reuses one file and
@@ -320,9 +389,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, 201, { src: `uploads/${filename}`, bytes: buffer.length });
     } catch (error) {
       const tooBig = String(error).includes('too large');
+      const isAudio = url.searchParams.get('kind') === 'audio';
+      const cap = isAudio ? MAX_AUDIO_BYTES : MAX_UPLOAD_BYTES;
       return json(res, tooBig ? 413 : 400, {
         error: tooBig
-          ? `Image is larger than ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB`
+          ? `${isAudio ? 'Audio' : 'Image'} is larger than ${Math.round(cap / 1024 / 1024)}MB`
           : String(error),
       });
     }

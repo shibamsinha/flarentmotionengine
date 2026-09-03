@@ -950,7 +950,7 @@
     "label": "sample",
     "ok": true,
     "scenes": 4,
-    "lines": 217,
+    "lines": 228,
     "objectKinds": [
       "BUTTON",
       "CARD",
@@ -992,6 +992,6 @@
       "y"
     ],
     "warnings": [],
-    "schemaHash": "733f2e3133f7b192"
+    "schemaHash": "96b50c7969639dab"
   }
 }

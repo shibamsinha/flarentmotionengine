@@ -20,6 +20,7 @@ import type { FlarentVideoProps } from '../types/scene';
 import { buildTimeline, canvasFor, totalFrames } from '../utils/timing';
 import { DEFAULT_PALETTE, FIELDS } from '../utils/typography';
 import { OverlayLayer } from '../components/motion/OverlayLayer';
+import { AudioTrack } from '../components/motion/AudioTrack';
 import { SceneRenderer } from './SceneRenderer';
 
 export const FlarentVideo: React.FC<FlarentVideoProps> = ({
@@ -27,6 +28,7 @@ export const FlarentVideo: React.FC<FlarentVideoProps> = ({
   palette = DEFAULT_PALETTE,
   fields,
   overlay,
+  audio,
 }) => {
   // Read back from Remotion's own config rather than from `format` directly:
   // `calculateFlarentMetadata` below is what actually decided the frame shape
@@ -92,6 +94,22 @@ export const FlarentVideo: React.FC<FlarentVideoProps> = ({
       */}
       {overlay ? (
         <OverlayLayer overlay={overlay} scenes={scenes} fps={fps} canvas={canvas} />
+      ) : null}
+      {/*
+        V7 — the project's audio, outside the <Series> for the same reason the
+        overlay is: it belongs to the film, not to a scene. Inside a sequence it
+        would inherit that scene's lifetime and restart at every boundary.
+
+        Being inside the composition at all is what makes the editor's <Player>
+        and the headless render share one clock — there is no second audio
+        timeline anywhere in the app.
+      */}
+      {audio ? (
+        <AudioTrack
+          audio={audio}
+          fps={fps}
+          durationInFrames={totalFrames(scenes, fps)}
+        />
       ) : null}
     </AbsoluteFill>
   );

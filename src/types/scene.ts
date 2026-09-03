@@ -9,6 +9,7 @@
 
 import type { VisualStyleConfig, VisualStyleName } from '../utils/visualStyle';
 import type { SceneObject } from './object';
+import type { ProjectAudio } from './audio';
 
 export type AnimationStyle = 'massive' | 'punch' | 'stack' | 'slide' | 'rapid';
 
@@ -334,4 +335,9 @@ export type FlarentVideoProps = {
   fields?: Partial<Record<BackgroundName, string>>;
   /** A static image over the whole reel. Scenes may opt out individually. */
   overlay?: OverlayImage;
+  /**
+   * V7 — the project's audio track. Project-level, like the overlay: it plays
+   * across the whole film and belongs to no scene.
+   */
+  audio?: ProjectAudio;
 };

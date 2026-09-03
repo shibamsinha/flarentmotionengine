@@ -14,6 +14,7 @@
 
 import type { CanvasFormat, OverlayImage, PaletteName, Scene } from './scene';
 import type { FieldOverrides } from '../utils/typography';
+import type { ProjectAudio } from './audio';
 
 export type Project = {
   scenes: Scene[];
@@ -22,6 +23,12 @@ export type Project = {
   format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
+  /**
+   * V7 — one audio track for the whole video. Project-level by design: it is
+   * positioned on the project clock, so scenes can be re-timed underneath it
+   * without moving it.
+   */
+  audio: ProjectAudio | null;
   title: string | null;
   /** Which scene the editor should open on. Null means "the first one". */
   selectedId: string | null;

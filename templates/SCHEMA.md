@@ -562,3 +562,81 @@ entrance) · `STAGGER` with `"stagger": 0.15` seconds between children.
 >
 > Keep typography doing the talking. Objects support the words; they do not
 > replace them.
+
+---
+
+# V7 — audio
+
+A document may carry one `audio` block. It is **document-level, beside
+`scenes`** — never inside a scene. The track plays on the project clock, so
+re-timing, adding or removing scenes moves the visuals underneath it and leaves
+the audio where it is.
+
+Projects without `audio` are unchanged in every respect.
+
+```json
+{
+  "title": "…",
+  "scenes": [ … ],
+  "audio": {
+    "src": "uploads/track.mp3",
+    "name": "track.mp3",
+    "sourceDuration": 180,
+    "sourceStart": 88.2,
+    "sourceEnd": 107.6,
+    "timelineStart": 0,
+    "volume": 0.9,
+    "fadeIn": 0.5,
+    "fadeOut": 1
+  }
+}
+```
+
+## Two ranges, and they are different things
+
+| | means |
+|---|---|
+| `sourceStart` / `sourceEnd` | which part of the **file** to use |
+| `timelineStart` | where in the **video** that part begins |
+
+Selecting 1:28–1:47 of a song and placing it at 0s of the video is
+`sourceStart: 88.2, sourceEnd: 107.6, timelineStart: 0`. Moving the clip later
+changes only `timelineStart`; the trim is untouched.
+
+All values are **seconds**.
+
+## Fields
+
+- `src` — a `public/` path (what the upload endpoint returns) or an http(s) URL
+- `name`, `sourceDuration` — for the editor's display; ignored when rendering
+- `volume` — `0`–`1`, applied in the preview and the export alike
+- `muted` — silences without discarding `volume`
+- `fadeIn` / `fadeOut` — seconds, measured from the clip's own start and end
+- `loop` — `false` by default; music is never looped to fill a longer video
+  unless asked
+
+## Length
+
+The video's duration always comes from its scenes. Audio never changes it:
+
+- **audio longer than the video** — the extra is not heard
+- **audio shorter than the video** — it stops and the video carries on
+- nothing is ever time-stretched
+
+## Missing files
+
+`src` is a reference, not embedded data. A project opened where the file is not
+available keeps its audio settings, reports the missing asset, and still
+previews and exports — silently.
+
+## V7 prompt block
+
+> A project may have one `audio` block beside `scenes`. Never put audio on a
+> scene.
+>
+> `sourceStart`/`sourceEnd` choose the part of the file; `timelineStart` places
+> it in the video. All seconds.
+>
+> Keep the selection no longer than the video unless there is a reason — the
+> excess is not heard. Use `fadeIn`/`fadeOut` of around 0.5–1s when a song
+> starts or ends mid-phrase.

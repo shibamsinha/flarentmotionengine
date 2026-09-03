@@ -315,6 +315,16 @@ touched, see §2)
   proves nothing in this environment.** Verify animation logic in Node instead
   (see the `Particle` export in `ParticleField.tsx`, which exists for exactly
   that), or ask the user to display the pane.
+- **`npm run dev` uses `concurrently -k`, so killing one server kills both.**
+  Restarting the render server after editing `render-server.mjs` (which does not
+  hot-reload) therefore also takes down Vite on 5173, silently. Restart both, or
+  run `npx vite` and `node server/render-server.mjs` separately.
+- **Audio sync is structural, not maintained.** V7 puts Remotion's `<Audio>`
+  inside `FlarentVideo`, so the editor's `<Player>` and `renderMedia` drive it
+  from the same clock they draw scenes from. There is deliberately no
+  `HTMLAudioElement` in the editor and no play button on the audio panel — a
+  second playback surface would be a second clock. If audio ever needs to be
+  "kept in sync", something has been built in the wrong place.
 - **`ffmpeg`'s `cropdetect` lies about small bright objects.** Measuring the
   splash with it gave the mark as 76×104 (aspect 0.73) and sent an hour into
   "why doesn't the logo asset match?". NumPy on the extracted PNGs gave the true

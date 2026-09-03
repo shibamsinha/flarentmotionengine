@@ -148,4 +148,25 @@ const sampleScenes = (): Scene[] => {
  * also means the ids in the copied text are examples, not fixtures.
  */
 export const sampleProjectJson = (): string =>
-  serialiseProject(sampleScenes(), 'Sample project', {}, null, 'portrait');
+  serialiseProject(sampleScenes(), 'Sample project', {}, null, 'portrait', {
+    /*
+     * V7 — shown so the shape of an audio track is part of the example, with a
+     * placeholder path rather than a real upload.
+     *
+     * The path is deliberately one that will not resolve: nothing ships an
+     * audio asset, and pointing at a machine-specific `uploads/…` hash would be
+     * worse — it would work on exactly one computer. Importing this sample
+     * therefore also demonstrates the missing-asset state, which is a real
+     * thing users hit when a project moves between machines. The video still
+     * renders; only the sound is absent, and the editor says so.
+     */
+    src: 'uploads/your-track.mp3',
+    name: 'your-track.mp3',
+    sourceDuration: 180,
+    sourceStart: 88.2,
+    sourceEnd: 107.6,
+    timelineStart: 0,
+    volume: 0.9,
+    fadeIn: 0.5,
+    fadeOut: 1,
+  });

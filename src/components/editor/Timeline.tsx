@@ -2,6 +2,8 @@ import React, { useCallback, useRef, useState } from 'react';
 import type { PaletteName, Scene } from '../../types/scene';
 import { themeFor, type FieldOverrides } from '../../utils/typography';
 import { CANVAS, buildTimeline, totalFrames } from '../../utils/timing';
+import type { ProjectAudio } from '../../types/audio';
+import { cachedWaveform } from '../../utils/waveform';
 
 /** Tick spacing that keeps the ruler readable at any reel length. */
 const tickStep = (seconds: number): number => {
@@ -19,7 +21,9 @@ export const Timeline: React.FC<{
   selectedId: string | null;
   onSelect: (id: string) => void;
   onSeek: (frame: number) => void;
-}> = ({ scenes, palette, fields, frame, selectedId, onSelect, onSeek }) => {
+  /** V7 — drawn as its own lane under the scenes, in project time. */
+  audio?: ProjectAudio | null;
+}> = ({ scenes, palette, fields, frame, selectedId, onSelect, onSeek, audio }) => {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
@@ -153,6 +157,64 @@ export const Timeline: React.FC<{
           <span className="playhead-grip" />
         </span>
       </div>
+
+      {/*
+        The audio lane.
+
+        One bar across the whole timeline rather than a slice inside each scene
+        card, because the track is positioned in *project* time and belongs to
+        no scene. Re-timing a scene slides the segments above this bar; the bar
+        itself does not move, which is the invariant made visible.
+
+        Peaks come from the cache only — never computed here. This component
+        re-renders on every frame during playback, and decoding audio in that
+        path is exactly the lag the brief warns about.
+      */}
+      {audio ? (() => {
+        const clipStart = Math.max(0, audio.timelineStart);
+        const selected = Math.max(0, audio.sourceEnd - audio.sourceStart);
+        const clipLength = Math.max(0, Math.min(selected, seconds - clipStart));
+        if (clipLength <= 0 || seconds <= 0) return null;
+
+        const wave = cachedWaveform(
+          /^(https?:)?\/\//.test(audio.src) ? audio.src : `/${audio.src}`,
+        );
+        // The slice of the file the selection actually uses.
+        const bars = wave && wave.duration > 0
+          ? (() => {
+              const from = Math.floor((audio.sourceStart / wave.duration) * wave.peaks.length);
+              const to = Math.ceil((audio.sourceEnd / wave.duration) * wave.peaks.length);
+              return wave.peaks.slice(Math.max(0, from), Math.max(from + 1, to));
+            })()
+          : null;
+
+        return (
+          <div className="timeline-audio">
+            <span
+              className="timeline-audio-clip"
+              style={{
+                left: `${(clipStart / seconds) * 100}%`,
+                width: `${(clipLength / seconds) * 100}%`,
+              }}
+            >
+              {bars
+                ? bars.map((peak, i) => (
+                    <span
+                      key={i}
+                      className="timeline-audio-peak"
+                      style={{ height: `${Math.max(12, peak * 100)}%` }}
+                    />
+                  ))
+                : null}
+            </span>
+            {!bars ? (
+              <span className="timeline-audio-label">
+                {audio.muted ? 'audio · muted' : 'audio'}
+              </span>
+            ) : null}
+          </div>
+        );
+      })() : null}
 
       <div className="ruler">
         {ticks.map((t) => (

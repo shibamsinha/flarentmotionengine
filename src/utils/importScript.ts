@@ -41,6 +41,7 @@ import {
   canvasFor,
 } from './timing';
 import type { FieldOverrides } from './typography';
+import type { ProjectAudio } from '../types/audio';
 
 export type ImportSeverity = 'error' | 'warning';
 
@@ -58,6 +59,8 @@ export type ImportedProject = {
   format: CanvasFormat;
   fields: FieldOverrides;
   overlay: OverlayImage | null;
+  /** V7 — the project's audio track, or null when the document has none. */
+  audio: ProjectAudio | null;
   scenes: Scene[];
   durationInFrames: number;
   durationSeconds: number;
@@ -373,6 +376,71 @@ const readStyleConfig = (
  * script and silently dropped is the kind of omission nobody notices until the
  * logo is missing from a delivered reel.
  */
+/**
+ * V7 — the project's audio track.
+ *
+ * Document-level, alongside `overlay`, because that is what it is. Reading it
+ * per-scene would make "which scene does the song belong to?" a question the
+ * schema invites, and it has no good answer.
+ *
+ * `sourceStart`/`sourceEnd` say which part of the file to use; `timelineStart`
+ * says where in the video it goes. Both are seconds. Keeping them separate is
+ * what lets a clip be moved without being re-trimmed.
+ */
+const readAudio = (
+  raw: unknown,
+  push: (issue: ImportIssue) => void,
+): { audio: ProjectAudio | null; failed: boolean } => {
+  if (raw === undefined || raw === null) return { audio: null, failed: false };
+  const fail = (field: string, message: string) => {
+    push({ path: `audio.${field}`, message, severity: 'error' });
+  };
+
+  if (!isRecord(raw)) {
+    push({ path: 'audio', message: 'Must be an object with at least a `src`.', severity: 'error' });
+    return { audio: null, failed: true };
+  }
+
+  const src = asString(raw.src ?? raw.url ?? raw.source);
+  if (src === null || src.trim() === '') {
+    fail('src', 'Missing. An audio track needs a `src` path or URL.');
+    return { audio: null, failed: true };
+  }
+
+  const sourceStart = Math.max(0, asNumber(raw.sourceStart) ?? 0);
+  const sourceEnd = asNumber(raw.sourceEnd);
+  if (sourceEnd === null) {
+    fail('sourceEnd', 'Missing. Say where the selected section of the file ends, in seconds.');
+    return { audio: null, failed: true };
+  }
+  if (sourceEnd <= sourceStart) {
+    fail('sourceEnd', `Must be after sourceStart (${sourceStart}s).`);
+    return { audio: null, failed: true };
+  }
+
+  const volume = asNumber(raw.volume);
+  if (volume !== null && (volume < 0 || volume > 1)) {
+    push({ path: 'audio.volume', message: `${volume} is outside 0–1 — clamped.`, severity: 'warning' });
+  }
+
+  return {
+    audio: {
+      src: src.trim(),
+      ...(asString(raw.name) ? { name: asString(raw.name)!.trim() } : {}),
+      ...(asNumber(raw.sourceDuration) ? { sourceDuration: asNumber(raw.sourceDuration)! } : {}),
+      sourceStart,
+      sourceEnd,
+      timelineStart: Math.max(0, asNumber(raw.timelineStart) ?? 0),
+      volume: Math.min(1, Math.max(0, volume ?? 1)),
+      ...(raw.muted === true ? { muted: true } : {}),
+      ...((asNumber(raw.fadeIn) ?? 0) > 0 ? { fadeIn: asNumber(raw.fadeIn)! } : {}),
+      ...((asNumber(raw.fadeOut) ?? 0) > 0 ? { fadeOut: asNumber(raw.fadeOut)! } : {}),
+      ...(raw.loop === true ? { loop: true } : {}),
+    },
+    failed: false,
+  };
+};
+
 const readOverlay = (
   raw: unknown,
   push: (issue: ImportIssue) => void,
@@ -1040,6 +1108,9 @@ export const parseFlarentScript = (input: string): ImportResult => {
 
   /* overlay --------------------------------------------------------------- */
   const { overlay } = readOverlay(doc.overlay ?? doc.staticImage, push);
+  // Errors pushed by readAudio fail the document through the shared issue
+  // list, exactly as readOverlay's do — there is no separate failure flag.
+  const { audio } = readAudio(doc.audio ?? doc.music, push);
 
   /* scenes ---------------------------------------------------------------- */
   const parsed: { scene: Scene; declaredStart: number | null }[] = [];
@@ -1120,6 +1191,7 @@ export const parseFlarentScript = (input: string): ImportResult => {
       format,
       fields,
       overlay,
+      audio,
       scenes,
       durationInFrames,
       durationSeconds,
@@ -1167,6 +1239,8 @@ export const serialiseProject = (
   fields: FieldOverrides,
   overlay: OverlayImage | null = null,
   format: CanvasFormat = DEFAULT_FORMAT,
+  /** V7. Last and optional, so every existing caller is unaffected. */
+  audio: ProjectAudio | null = null,
 ): string => {
   const canvas = canvasFor(format);
   let start = 0;
@@ -1181,6 +1255,23 @@ export const serialiseProject = (
     ),
     ...(Object.keys(fields).length > 0 ? { backgroundPalette: fields } : {}),
     ...(overlay ? { overlay } : {}),
+    ...(audio
+      ? {
+          audio: {
+            src: audio.src,
+            ...(audio.name ? { name: audio.name } : {}),
+            ...(audio.sourceDuration ? { sourceDuration: round3(audio.sourceDuration) } : {}),
+            sourceStart: round3(audio.sourceStart),
+            sourceEnd: round3(audio.sourceEnd),
+            timelineStart: round3(audio.timelineStart),
+            volume: audio.volume,
+            ...(audio.muted ? { muted: true } : {}),
+            ...(audio.fadeIn ? { fadeIn: round3(audio.fadeIn) } : {}),
+            ...(audio.fadeOut ? { fadeOut: round3(audio.fadeOut) } : {}),
+            ...(audio.loop ? { loop: true } : {}),
+          },
+        }
+      : {}),
     scenes: scenes.map((scene) => {
       const entry = {
         id: scene.id,

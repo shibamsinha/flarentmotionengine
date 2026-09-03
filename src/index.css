@@ -2187,3 +2187,189 @@ textarea.import-input {
   padding: 0 0 6px;
   border: none;
 }
+
+/* ---------------------------------------------------------- V7 audio track */
+
+.audio-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audio-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* The waveform is the trim control, so it is sized to be grabbable rather
+   than to be decorative. */
+.wave {
+  position: relative;
+  height: 76px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-input);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.wave-bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 1px;
+}
+
+.wave-bar {
+  flex: 1;
+  min-width: 0;
+  background: var(--accent);
+  border-radius: 1px;
+  opacity: 0.8;
+}
+
+.wave-pending {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* Outside the selection is dimmed, not hidden — you need to see what you are
+   not using in order to know where to drag. */
+.wave-mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Dim, not black: the selection must be obvious, but the shape of what is
+     *not* selected is how you know where to drag next. */
+  background: rgba(9, 10, 9, 0.58);
+  pointer-events: none;
+}
+
+.wave-sel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  cursor: grab;
+}
+
+.wave-sel:active {
+  cursor: grabbing;
+}
+
+/* Wide hit areas: a 2px border is not a drag target. */
+.wave-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  cursor: ew-resize;
+}
+
+.wave-handle.h-start { left: -8px; }
+.wave-handle.h-end { right: -8px; }
+
+.wave-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.audio-times {
+  display: flex;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+.audio-times b {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.audio-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-volume input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint.is-error {
+  color: #d98a8a;
+}
+
+/* The audio's span on the global timeline, under the scene strip. One bar,
+   positioned in project time — it is not divided by scene, because it does not
+   belong to scenes. */
+.timeline-audio {
+  position: relative;
+  height: 16px;
+  margin-top: 3px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.timeline-audio-clip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 3px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  overflow: hidden;
+}
+
+.timeline-audio-peak {
+  flex: 1;
+  min-width: 0;
+  background: var(--accent);
+  opacity: 0.55;
+  border-radius: 1px;
+}
+
+.timeline-audio-label {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  pointer-events: none;
+}
