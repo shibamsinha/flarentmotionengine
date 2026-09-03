@@ -109,6 +109,20 @@ export type SceneElement = {
   align?: Alignment;
   /** Words promoted inside this element. Rarely needed — the role does this job. */
   emphasis?: string[];
+  /**
+   * Per-word colour, keyed by the word in lower case.
+   *
+   * A deliberately separate axis from `visualStyle`. A style says how the
+   * *type* is painted — solid, outlined, a gradient — and applies to a whole
+   * element; this says "make this one word red" without changing anything
+   * else about it. Keyed by the word rather than by index so it survives the
+   * text being re-typed around it, which is the same reasoning `emphasis`
+   * uses, and it means marking a repeated word colours every instance.
+   *
+   * Values are any CSS colour. An unmatched key is simply never applied.
+   */
+  wordColors?: Record<string, string>;
+
   case?: TextCase;
   /** Multiplies the resolved size. 1 = the preset's own value. */
   scale?: number;
@@ -229,6 +243,19 @@ export type Scene = {
    * falls back to its own sensible default — usually "the last word wins".
    */
   emphasis?: string[];
+  /**
+   * Per-word colour, keyed by the word in lower case.
+   *
+   * A deliberately separate axis from `visualStyle`. A style says how the
+   * *type* is painted — solid, outlined, a gradient — and applies to a whole
+   * element; this says "make this one word red" without changing anything
+   * else about it. Keyed by the word rather than by index so it survives the
+   * text being re-typed around it, which is the same reasoning `emphasis`
+   * uses, and it means marking a repeated word colours every instance.
+   *
+   * Values are any CSS colour. An unmatched key is simply never applied.
+   */
+  wordColors?: Record<string, string>;
   /**
    * Multiplies the style's natural type size. 1 = the art-directed default.
    * Named `fontSize` to match the documented scene schema.

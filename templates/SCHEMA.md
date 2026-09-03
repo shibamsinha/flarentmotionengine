@@ -640,3 +640,58 @@ previews and exports — silently.
 > Keep the selection no longer than the video unless there is a reason — the
 > excess is not heard. Use `fadeIn`/`fadeOut` of around 0.5–1s when a song
 > starts or ends mid-phrase.
+
+---
+
+# Word colour and free placement
+
+## `wordColors`
+
+Colour individual words without changing how they are painted otherwise. Valid
+on a **scene** and on an **element**; the element's entries win.
+
+```json
+{
+  "text": "RED GREEN BLUE",
+  "wordColors": { "red": "#FF2D2D", "green": "#22FF66", "blue": "#3D7BFF" }
+}
+```
+
+Keys are matched **case-insensitively and without surrounding punctuation**, so
+a rule for `customers` colours `CUSTOMERS.` too. Matching is by word, not by
+position — re-typing the line around a coloured word keeps its colour, and a
+word that appears twice is coloured in both places.
+
+Values are any CSS colour.
+
+How a colour lands depends on the word's visual style, so that the style still
+reads as itself:
+
+| style | result |
+|---|---|
+| `SOLID` | the fill becomes the colour |
+| `OUTLINE` | the stroke becomes the colour; it stays an outline |
+| `GRADIENT` | collapses to a solid in that colour |
+| `SPLIT` | every part takes the colour |
+
+`wordColors` is separate from `visualStyle`: a style is how a whole element is
+painted, this is one word inside it.
+
+## Free placement — `x` / `y`
+
+An element with both `x` and `y` is pinned there. They place the element's **ink
+centre** as fractions of the frame, top-left origin, and an element placed this
+way is exempt from the composition's flow and from collision nudging.
+
+```json
+{ "text": "CORNER", "role": "SUPPORT", "size": "SMALL", "x": 0.25, "y": 0.2 }
+```
+
+Set both or neither — one alone is ignored. Values outside `0..1` are legal and
+put the type partly or wholly off the frame, which is the point of them.
+
+In the editor this is a drag: every element in a composed scene has a box on the
+canvas, and moving it writes `x`/`y`. A plain-text scene has no elements to
+address, so use **Compose · split into elements** first — that is also how a
+single word becomes independently draggable, since a word is just a small
+element.

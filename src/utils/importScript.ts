@@ -441,6 +441,34 @@ const readAudio = (
   };
 };
 
+/**
+ * Per-word colours: `{ "customers": "#4ADE6A" }`.
+ *
+ * A malformed entry is a warning rather than an error — an unrecognised colour
+ * simply does not get applied, and refusing the whole document over one bad
+ * swatch would be out of proportion to the mistake.
+ */
+const readWordColors = (
+  raw: unknown,
+  path: string,
+  push: (issue: ImportIssue) => void,
+): Record<string, string> | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    push({ path, message: 'Expected an object of word → colour.', severity: 'warning' });
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [word, value] of Object.entries(raw)) {
+    if (typeof value !== 'string' || value.trim() === '') {
+      push({ path: `${path}.${word}`, message: 'Expected a colour string — ignored.', severity: 'warning' });
+      continue;
+    }
+    out[word.toLowerCase()] = value.trim();
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
 const readOverlay = (
   raw: unknown,
   push: (issue: ImportIssue) => void,
@@ -535,6 +563,13 @@ const readElement = (
     id: asString(raw.id)?.trim() || `${sceneIndex}-${index}`,
     text: (text ?? '').trim(),
   };
+
+  const elementWordColors = readWordColors(
+    raw.wordColors,
+    `scenes[${sceneIndex}].elements[${index}].wordColors`,
+    push,
+  );
+  if (elementWordColors) element.wordColors = elementWordColors;
 
   const enumField = <T extends string>(
     field: string,
@@ -817,6 +852,8 @@ const readScene = (
   // here means an adjacent phrase becomes one hero line, which is what the
   // author meant.
   const emphasis: string[] = [];
+  const sceneWordColors = readWordColors(raw.wordColors, at('wordColors'), push);
+
   const rawEmphasis = raw.emphasis ?? raw.emphasise ?? raw.emphasize;
   if (rawEmphasis !== undefined && rawEmphasis !== null) {
     const entries = Array.isArray(rawEmphasis)
@@ -917,6 +954,7 @@ const readScene = (
       background,
       alignment,
       emphasis,
+      ...(sceneWordColors ? { wordColors: sceneWordColors } : {}),
       case: textCase,
       ...(composition !== undefined ? { composition } : {}),
       ...(visualStyle !== undefined ? { visualStyle } : {}),
@@ -1222,6 +1260,9 @@ const serialiseElement = (element: SceneElement) => ({
   ...(element.emphasis && element.emphasis.length > 0
     ? { emphasis: element.emphasis }
     : {}),
+  ...(element.wordColors && Object.keys(element.wordColors).length > 0
+    ? { wordColors: element.wordColors }
+    : {}),
   ...(element.scale !== undefined && element.scale !== 1
     ? { scale: element.scale }
     : {}),
@@ -1279,6 +1320,9 @@ export const serialiseProject = (
         duration: scene.duration,
         text: scene.text,
         emphasis: scene.emphasis ?? [],
+        ...(scene.wordColors && Object.keys(scene.wordColors).length > 0
+          ? { wordColors: scene.wordColors }
+          : {}),
         animation: scene.style.toUpperCase(),
         direction: (scene.direction ?? 'center').toUpperCase(),
         alignment: scene.alignment.toUpperCase(),

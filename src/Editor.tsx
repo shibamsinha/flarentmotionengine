@@ -51,6 +51,7 @@ import type { ProjectAudio } from './types/audio';
 import { ObjectList } from './components/editor/ObjectList';
 import { ObjectInspector } from './components/editor/ObjectInspector';
 import { ObjectStage } from './components/editor/ObjectStage';
+import { TextStage } from './components/editor/TextStage';
 import type { ObjectKind, SceneObject } from './types/object';
 import {
   addObject,
@@ -100,6 +101,8 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
   );
   /** V6 — which object the object list and the canvas box are pointed at. */
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  /** Which piece of type is grabbed on the canvas. Scene-scoped, like objects. */
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [saved, setSaved] = useState(true);
   const playerRef = useRef<PlayerRef | null>(null);
@@ -182,6 +185,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
   // screen, and the canvas box would sit over a different scene's frame.
   useEffect(() => {
     setSelectedObjectId(null);
+    setSelectedElementId(null);
   }, [selectedId]);
 
   const seek = useCallback((target: number) => {
@@ -537,6 +541,17 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
               selected={canvasTarget === 'overlay'}
               onSelect={() => setCanvasTarget('overlay')}
               onChange={setOverlay}
+            />
+            {/* Type boxes. Before ObjectStage so an object's handles win when
+                the two overlap — the same order they render in. */}
+            <TextStage
+              scene={selected}
+              palette={palette}
+              canvas={canvas}
+              selectedElementId={selectedElementId}
+              active={!playing && selectedIsOnScreen}
+              onSelect={setSelectedElementId}
+              onChange={updateScene}
             />
             {/* V6 — the selected object's box. Last, so its handles are the
                 ones you reach when boxes overlap. */}

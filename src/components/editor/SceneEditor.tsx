@@ -12,6 +12,7 @@ import type {
 import { ImageControls } from './ImageControls';
 import { ElementEditor, seedElements } from './ElementEditor';
 import { VisualStyleControls } from './VisualStyleControls';
+import { WordColors } from './WordColors';
 import { ANIMATION_STYLES, styleDefinition } from '../motion/registry';
 import { MAX_SCENE_DURATION, MIN_SCENE_DURATION } from '../../utils/timing';
 import {
@@ -155,6 +156,14 @@ export const SceneEditor: React.FC<{
                 </p>
               </div>
             ) : null}
+
+            {/* Directly under emphasis: same question ("which word?"), same
+                gesture, so the two read as one group. */}
+            <WordColors
+              words={words}
+              colors={scene.wordColors}
+              onChange={(wordColors) => onChange({ wordColors })}
+            />
 
             <div className="field">
               <button

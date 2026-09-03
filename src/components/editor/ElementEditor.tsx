@@ -33,6 +33,7 @@ import {
 } from '../../utils/composition';
 import { isEmphasised, splitLines, splitWords } from '../../utils/typography';
 import { VisualStyleControls } from './VisualStyleControls';
+import { WordColors } from './WordColors';
 
 /**
  * Turn a V2 text scene into elements without changing what it looks like.
@@ -286,6 +287,21 @@ export const ElementEditor: React.FC<{
                   }
                 />
               </div>
+
+              {/* Per-element word colour. Sits with the element's own style
+                  controls because that is what it is — a paint decision scoped
+                  to this piece of type rather than to the scene. */}
+              <WordColors
+                words={splitWords(entry.text)}
+                colors={entry.wordColors}
+                onChange={(wordColors) =>
+                  commit(
+                    elements.map((item, i) =>
+                      i === index ? { ...item, wordColors } : item,
+                    ),
+                  )
+                }
+              />
 
               <VisualStyleControls
                 scope="element"

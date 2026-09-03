@@ -73,6 +73,7 @@ export const Stack: React.FC<MotionProps> = ({
       block={element.block}
       color={color}
       visual={visual}
+      wordColors={element.wordColors}
       renderWord={(word, _line, glyph) => {
         const source = transition?.carried.get(word.id);
         if (source && transition) {

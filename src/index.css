@@ -2373,3 +2373,44 @@ textarea.import-input {
   color: var(--text-faint);
   pointer-events: none;
 }
+
+/* ------------------------------------------------------- V8 word colours */
+
+.word-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The dot is the state: a word with no dot has no colour of its own. */
+.word-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  outline: 1px solid rgba(255, 255, 255, 0.18);
+  outline-offset: -1px;
+}
+
+.word-color-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-input);
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+}
+
+.swatch.is-on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

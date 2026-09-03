@@ -185,6 +185,12 @@ export type PlannedElement = {
    * on the frame, not on the plan. `SceneRenderer` finishes the job.
    */
   visual: VisualStyleConfig;
+  /**
+   * Per-word colour overrides, element merged over scene, keys lower-cased.
+   * Resolved here rather than in the renderer so the merge happens once per
+   * plan instead of once per word per frame.
+   */
+  wordColors?: Record<string, string>;
   /** The element the composition is built around. */
   dominant: boolean;
 };
@@ -730,6 +736,31 @@ export const mergeVisual = (
   return { ...fromScene, ...fromElement, type };
 };
 
+/**
+ * Per-word colours, element over scene.
+ *
+ * Keys are lower-cased on the way in so lookup is a plain map read at render
+ * time — matching is case-insensitive for the same reason `emphasis` matching
+ * is: the author typed "CUSTOMERS" and meant the word, not the casing.
+ *
+ * Returns undefined rather than an empty object when nothing is set, so the
+ * common case costs no allocation and the renderer can skip the lookup
+ * entirely.
+ */
+export const mergeWordColors = (
+  scene: Scene,
+  element?: Pick<SceneElement, 'wordColors'>,
+): Record<string, string> | undefined => {
+  const merged: Record<string, string> = {};
+  for (const [word, colour] of Object.entries(scene.wordColors ?? {})) {
+    merged[word.toLowerCase()] = colour;
+  }
+  for (const [word, colour] of Object.entries(element?.wordColors ?? {})) {
+    merged[word.toLowerCase()] = colour;
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+};
+
 /** Everything an element needs before it can be measured. */
 type ResolvedElement = {
   source: SceneElement;
@@ -750,6 +781,7 @@ type ResolvedElement = {
   delay: number;
   drafts: DraftLine[];
   visual: VisualStyleConfig;
+  wordColors?: Record<string, string>;
 };
 
 /**
@@ -811,6 +843,7 @@ const resolveElement = (
     delay: element.delay ?? 0,
     drafts,
     visual: mergeVisual(scene, element),
+    wordColors: mergeWordColors(scene, element),
   };
 };
 
@@ -1130,6 +1163,7 @@ const planComposed = (
       delay: delayFrames,
       motion: ROLE_MOTION[element.role],
       visual: element.visual,
+      wordColors: element.wordColors,
       dominant: index === dominantIndex,
     };
   });
@@ -1208,6 +1242,8 @@ const planSingle = (
         delay: 0,
         motion: 1,
         visual: mergeVisual(scene),
+        // The V2 path has no elements, so scene-level colours are all there is.
+        wordColors: mergeWordColors(scene),
         dominant: true,
       },
     ],

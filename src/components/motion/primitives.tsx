@@ -268,6 +268,57 @@ const textAlignToCss = (
  * never learns whether it is solid, outlined, a gradient or split; without it,
  * five animations × four styles would be twenty things to maintain.
  */
+/**
+ * A word's own colour, applied over its resolved style.
+ *
+ * Each style answers "make this word red" differently, and the answers are
+ * chosen so the result is what the author would have expected:
+ *
+ *   SOLID     the fill becomes the colour
+ *   OUTLINE   the stroke becomes the colour; it stays an outline
+ *   GRADIENT  collapses to a solid in that colour — a gradient is a *set* of
+ *             colours, so keeping it while also honouring one specific colour
+ *             is not possible, and picking a colour is the more explicit
+ *             instruction of the two
+ *   SPLIT     every part takes the colour, which is what makes a split word
+ *             read as one word again
+ *
+ * Applied here rather than inside `StyledText` because this is the one place
+ * that knows which word it is looking at. StyledText remains the only place a
+ * glyph is painted, which is the V4 rule.
+ */
+const recolour = (
+  style: ResolvedStyle,
+  wordColors: Record<string, string> | undefined,
+  text: string,
+): ResolvedStyle => {
+  if (!wordColors) return style;
+  // Strip the punctuation an author would not have typed into the colour map,
+  // so "CUSTOMERS." matches a rule written for "customers".
+  const bare = text.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+  const colour = wordColors[bare] ?? wordColors[text.toLowerCase()];
+  if (!colour) return style;
+
+  if (style.type === 'gradient') {
+    return { ...style, type: 'solid', fill: colour, gradient: null, parts: [] };
+  }
+
+  return {
+    ...style,
+    // A null fill is OUTLINE's transparent centre — recolouring it would fill
+    // in the letter and stop it being an outline at all.
+    fill: style.fill === null ? null : colour,
+    stroke: style.stroke ? { ...style.stroke, color: colour } : null,
+    parts: style.parts.map((part) => ({
+      ...part,
+      fill: part.fill === null ? null : colour,
+      stroke: part.stroke ? { ...part.stroke, color: colour } : null,
+      gradient: null,
+      type: part.type === 'gradient' ? ('solid' as const) : part.type,
+    })),
+  };
+};
+
 export type WordRenderer = (
   word: PlannedWord,
   line: PlannedLine,
@@ -288,6 +339,16 @@ export const TypeBlock: React.FC<{
   color: string;
   /** How the type is painted. Resolved against this frame's field colour. */
   visual?: ResolvedStyle;
+  /**
+   * Per-word colour, keys lower-cased. Recolours a word without changing how
+   * it is painted otherwise — an outlined word stays outlined, a gradient word
+   * keeps its gradient and only its stops move to the chosen colour.
+   *
+   * Applied here rather than inside `StyledText` because this is the one place
+   * that knows which word it is looking at; StyledText stays the single place
+   * a glyph is *painted*, which is the V4 rule.
+   */
+  wordColors?: Record<string, string>;
   renderWord: WordRenderer;
   /** Applied to the whole block — used by SLIDE / PUNCH / MASSIVE. */
   values?: MotionValues;
@@ -298,6 +359,7 @@ export const TypeBlock: React.FC<{
   block,
   color,
   visual,
+  wordColors,
   renderWord,
   values,
   blur,
@@ -384,7 +446,7 @@ export const TypeBlock: React.FC<{
                 visual ? (
                   <StyledText
                     text={word.text}
-                    style={visual}
+                    style={recolour(visual, wordColors, word.text)}
                     fontSize={word.fontSize}
                     box={{
                       width: block.width,
@@ -519,6 +581,9 @@ export const StyleBlock: React.FC<{
       block={element.block}
       color={color}
       visual={visual}
+      // The element already carries its resolved colours, so StyleBlock needs
+      // no prop of its own — one fewer thing for a caller to forget.
+      wordColors={element.wordColors}
       values={blockValues}
       blur={blockBlur}
       origin={origin}

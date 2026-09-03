@@ -75,13 +75,21 @@ export const ExportBar: React.FC<{
     }, 400);
   }, []);
 
-  const exportMp4 = useCallback(async () => {
+  const exportMp4 = useCallback(async (options?: { silent?: boolean }) => {
     setJob({ phase: 'starting', progress: 0 });
     try {
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenes, palette, format, fields, overlay, audio }),
+        /*
+         * A silent export omits `audio` entirely rather than sending it muted.
+         * Muting would still make the renderer decode and mux a silent track —
+         * slower, and the file would carry a pointless empty audio stream.
+         */
+        body: JSON.stringify({
+          scenes, palette, format, fields, overlay,
+          audio: options?.silent ? null : audio,
+        }),
       });
       if (!response.ok) {
         throw new Error(`Render server responded ${response.status}`);
@@ -143,10 +151,28 @@ export const ExportBar: React.FC<{
         </span>
       ) : null}
 
+      {/*
+        The silent export only appears when there is audio to leave out —
+        otherwise it is a second button that does exactly what the first one
+        does, which teaches the user that the two are different when they are
+        not.
+      */}
+      {audio ? (
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void exportMp4({ silent: true })}
+          disabled={busy || scenes.length === 0}
+          title="Render the video with the audio track left out"
+        >
+          Export silent
+        </button>
+      ) : null}
+
       <button
         type="button"
         className="btn primary"
-        onClick={exportMp4}
+        onClick={() => void exportMp4()}
         disabled={busy || scenes.length === 0}
       >
         {busy ? 'Exporting…' : 'Export MP4'}

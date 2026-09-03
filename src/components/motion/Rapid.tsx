@@ -40,6 +40,7 @@ export const Rapid: React.FC<MotionProps> = ({ element, frame, color, visual }) 
       block={beat.block}
       color={color}
       visual={visual}
+      wordColors={element.wordColors}
       renderWord={(_word, _line, glyph) => (
         <MotionSpan values={IDENTITY}>{glyph}</MotionSpan>
       )}
