@@ -2322,10 +2322,6 @@ textarea.import-input {
   min-width: 0;
 }
 
-.hint.is-error {
-  color: #d98a8a;
-}
-
 /* The audio's span on the global timeline, under the scene strip. One bar,
    positioned in project time — it is not divided by scene, because it does not
    belong to scenes. */
@@ -2402,7 +2398,11 @@ textarea.import-input {
   background: var(--bg-input);
 }
 
-.swatch {
+/* Named `word-swatch`, not `swatch`: `.swatch` was already taken by the scene
+   list's 9px field-colour dot, and redefining it here silently blew every scene
+   row's grid apart. A picker swatch and a status dot are different things and
+   need different names. */
+.word-swatch {
   width: 22px;
   height: 22px;
   padding: 0;
@@ -2410,7 +2410,7 @@ textarea.import-input {
   border-radius: 3px;
 }
 
-.swatch.is-on {
+.word-swatch.is-on {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

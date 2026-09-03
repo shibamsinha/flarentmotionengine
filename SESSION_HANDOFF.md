@@ -315,6 +315,21 @@ touched, see §2)
   proves nothing in this environment.** Verify animation logic in Node instead
   (see the `Particle` export in `ParticleField.tsx`, which exists for exactly
   that), or ask the user to display the pane.
+- **`src/index.css` is one flat 2400-line stylesheet with no scoping, so a new
+  rule can silently redefine an old one.** This happened: a `.swatch` added for
+  the word-colour picker (22px) overrode the scene list's existing `.swatch`
+  (a 9px field dot), which blew the `.scene-row` grid apart across the whole
+  editor — and nothing failed, typechecked or rendered differently. Before
+  adding CSS, grep for the class name. To check the whole file afterwards:
+
+      python3 -c "
+      import re,pathlib
+      s=pathlib.Path('src/index.css').read_text(); d={}
+      for m in re.finditer(r'(?m)^([^\s@/][^{]*)\{', s):
+          d.setdefault(' '.join(m.group(1).split()).rstrip(','),[]).append(s[:m.start()].count(chr(10))+1)
+      print({k:v for k,v in d.items() if len(v)>1} or 'no duplicate selectors')"
+
+  Prefer a prefixed name (`.word-swatch`, `.object-row`) over a generic one.
 - **`npm run dev` uses `concurrently -k`, so killing one server kills both.**
   Restarting the render server after editing `render-server.mjs` (which does not
   hot-reload) therefore also takes down Vite on 5173, silently. Restart both, or

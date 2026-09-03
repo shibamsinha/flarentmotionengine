@@ -82,7 +82,7 @@ export const WordColors: React.FC<{
               <button
                 key={swatch}
                 type="button"
-                className={`swatch${colors?.[selected] === swatch ? ' is-on' : ''}`}
+                className={`word-swatch${colors?.[selected] === swatch ? ' is-on' : ''}`}
                 style={{ background: swatch }}
                 onClick={() => set(selected, swatch)}
                 title={swatch}
