@@ -1,326 +1,228 @@
 # Session handoff — Flarent Motion Engine
 
-Dense, cold-start reference. Read `README.md` for how the engine works day to
-day; this file is for what a fresh session needs that the code and README
-don't say — decisions, current state, and traps already found.
+Dense, cold-start reference. `README.md` explains how the engine works day to
+day and `templates/SCHEMA.md` is the JSON contract; this file is for what a
+fresh session needs that the code and those documents don't say — decisions,
+current state, and traps already paid for.
 
 ---
 
 ## 1. Goal
 
-Flarent Motion Engine is a scene-based kinetic typography engine (React + TS +
-Vite + Remotion) that turns a `Scene[]` data model into a 1080×1920 (or now
-1920×1080) H.264 reel — no fixed template, no fixed duration. This arc of
-sessions took it from the V2 baseline (motion: transitions, blur, easing)
-through **V3** (composition: roles, hierarchy, semantic sizing/positioning,
-oversized/clipped type), **V4** (independent visual styles — solid / outline /
-gradient / split, orthogonal to animation), editor polish (static overlay,
-Extract JSON, the real brand logo, an editable project title),
-**landscape** as a second project-level output format, and **V5** (the
-splash + start-screen entry flow, and one project-initialisation seam behind
-it). Long-term target: `script → AI → Scene[] → engine → MP4`, with the
-import/export JSON schema (`templates/SCHEMA.md`) as the seam a future AI
-Motion Director plugs into.
+Flarent Motion Engine turns a `Scene[]` data model into a 1080×1920 (or
+1920×1080) H.264 reel — no fixed template, no fixed duration. It began as a
+kinetic-typography engine; this session took it through **V6** (2D motion
+graphics: shapes, cards, buttons, icons, a cursor, with intent-based motion
+rather than keyframes) and **V7** (one global audio track on the project clock),
+plus per-word colour, canvas dragging of type, and fixes to
+split-into-elements. Long-term target is `script → AI → Scene[] → engine →
+MP4`, with `templates/SCHEMA.md` as the seam the AI layer plugs into.
+
+The standing constraint across every version: **extend, never replace.** Each
+brief has said so explicitly, and the architecture is now shaped by it.
 
 ---
 
 ## 2. Decisions made (and why)
 
 **Reference-measured, not eyeballed.** Every constant in `typography.ts`,
-`easing.ts`, `composition.ts`, `visualStyle.ts` came from frame-by-frame
-measurement of a reference video (ink bounding boxes, centroids, colour
-sampling), cited in a comment where it's used. Don't "clean up" a magic number
-without re-measuring.
+`easing.ts`, `composition.ts`, `visualStyle.ts`, `splashMotion.ts` came from
+frame-by-frame measurement of a source video, cited where it is used. Don't
+"clean up" a magic number without re-measuring.
 
-**Layout lives in the planner, motion lives in the components** (`plan.ts` vs
-`components/motion/*.tsx`), and V4 added a third axis on top: **visual style
-lives in `StyledText.tsx` alone**. No animation component ever sees a colour,
-stroke or gradient — `TypeBlock` builds the already-painted glyph and hands it
-to `renderWord(word, line, glyph)`. This is *the* rule that keeps 5 animations
-× 4 styles from becoming 20 components; don't let style logic leak into
-`Massive.tsx`/`Slide.tsx`/etc.
+**Three parallel planner paths, deliberately not unified.** `planSingle`
+(plain-text scenes) and `planComposed` (`scene.elements`) were kept separate in
+V3 so pre-V3 reels render byte-for-byte through the original code. V6 added a
+*third*, `planObjects`, for graphics. Sharing a planner between type and
+rounded rectangles would mean one carrying the other's concepts. Do not merge
+them.
 
-**V3 kept two separate planner paths** (`planSingle` for plain-text scenes,
-`planComposed` for `scene.elements`) rather than unifying them, specifically so
-every pre-V3 reel keeps rendering through the *original* code path, byte-for-
-byte. This is why V2 regression checks always pass — don't merge the two paths
-"for cleanliness."
+**Project-level things render as siblings of `<Series>`, never inside it.**
+The static overlay (V4) and the audio track (V7) both sit outside the scene
+sequence in `compositions/FlarentVideo.tsx`. Inside, they would inherit a
+scene's lifetime and be remounted at every boundary — which for audio is
+exactly "the music restarts each scene".
 
-**Static overlay renders as a sibling of `<Series>`, not inside it**
-(`compositions/FlarentVideo.tsx`) — the only way to guarantee it can't inherit
-any scene's motion or get re-mounted at a scene boundary.
+**Audio sync is structural, not maintained.** Remotion's `<Audio>` lives inside
+the composition, so the editor's `<Player>` and the headless `renderMedia` drive
+it from the clock they already draw scenes with. There is deliberately no
+`HTMLAudioElement` in the editor and no play button on the audio panel — a
+second playback surface would be a second clock. If audio ever needs to be
+"kept in sync", something has been built in the wrong place.
 
-**Extract and Import share one schema.** `serialiseProject`/`parseFlarentScript`
-in `utils/importScript.ts` are exact inverses — no separate "export format" to
-keep in sync. Import validation is all-or-nothing; unknown enum values are
-errors, never silently substituted.
+**V6 objects are a second list beside `elements`, not a replacement.** Text
+keeps its specialised model (roles, semantic sizes, compositions, visual
+styles); a scene with no `objects` key takes literally the code path it took
+before. Proof rather than assertion: all 14 pre-V6 reels have byte-identical
+schema fingerprints.
 
-**Landscape uses an explicit `canvas: VideoConfig` parameter everywhere, never
-a mutable "current format" global.** Reason: Remotion's `calculateMetadata`
-step and the actual frame-rendering pass are not guaranteed to share JS module
-state (can be different browser pages/realms in `renderMedia`) — a global
-would be correct in the editor's `<Player>` and silently wrong on export.
-Inside the Remotion tree, `format` resolves once via `calculateFlarentMetadata`
-and every descendant reads it back through `useVideoConfig()`. Outside the
-tree (the editor's drag overlays — `BoxStage`/`ImageStage`/`OverlayStage`),
-`App.tsx` computes `canvas` once from `format` state and passes it down
-explicitly. **Do not "simplify" this back to a global.**
+**Object motion is intent, resolved to channels.** `utils/objectMotion.ts` holds
+recipes over opacity/x/y/scale/rotation/blur. `FLOAT_IN` is not "translate up";
+it is a flat opacity curve, a rise on a settling curve, a slight scale and a
+blur that burns off early. The UI exposes the name; the engine owns the curves.
+Everything is a pure function of the frame — no accumulation, no rAF, no DOM
+measurement, because those look right in preview and export as nothing.
 
-**`BoxStage.tsx` is the one shared drag/resize primitive** for both a scene's
-free-placed picture and the project's static overlay — same pointer math
-(capture, corner-aspect-lock, scale-from-preview-size), different `rect`/`min`/
-`onChange`. A canvas *selection* model (`App.canvasTarget`) sits on top: click
-to select (shows handles), click empty canvas or Escape to deselect — an
-unselected box is an invisible hit-area, not permanently-visible furniture.
+**One project constructor, four doors.** `utils/project.ts` is the only place a
+`Project` is made (scratch / JSON / template / resumed auto-save). The editor
+takes one and cannot tell which door was used. Add a function there, never a
+branch inside the editor.
 
-**The brand logo is the user's real asset**, not a recreation. Early in this
-arc I hand-drew an SVG approximation of it; the user explicitly rejected that.
-`public/brand/logo.png` (2000×2000, mostly transparent padding) is the source
-of truth; `scripts/brand-crop.mjs` regenerates the two on-screen crops
-(`logo-lockup.png`, `logo-mark.png`) from it. **Never redraw the logo from
-memory again — if the asset is missing, ask for the file.**
+**Extract and Import are inverses, and the gate enforces it.**
+`serialiseProject`/`parseFlarentScript` round-trip; unknown enum values are
+errors, never silent substitutions; validation is all-or-nothing.
 
-**V5's editor move was a pure extraction, and that is checkable.** The editor
-left `App.tsx` for `Editor.tsx` so `App` could become the start-flow router.
-Its render tree is byte-identical (verified by diffing the 243 JSX lines against
-`git show HEAD:src/App.tsx`) and the only logic change is seven state
-initialisers reading an `initial: Project` prop instead of a module-scope
-`loadProject()`. If you ever need to prove the editor is untouched again, that
-diff is the check — not a read-through.
+**The sample document is generated, never hand-written.**
+`data/sampleProject.ts` builds real scenes and runs them through the real
+serialiser, so it cannot be invalid and picks up new fields automatically. A
+hand-maintained sample drifts the first time a field is added.
 
-**Import takes a file or a paste, through one function.** `runImport()` in
-`StartScreen.tsx` is the single path; a file and a paste differ only in where
-the text came from, so they cannot drift apart in validation or in wording. The
-card opens the OS picker *and* switches to the import view at the same time, so
-cancelling the dialog is not a dead end — the user asked for the paste box
-specifically, and it is also the answer to "I have the JSON but not a file".
-Import failures stay inline in that view with the text intact (correctable in
-place); only template failures use the full-screen `failed` view, because there
-is nothing to correct there.
-
-**One project constructor, three doors.** `utils/project.ts` is the only place a
-`Project` is made. The editor takes one and cannot tell whether it came from
-scratch, JSON or a template. Don't add a fourth branch inside the editor; add a
-function there instead.
-
-**Templates are `PRESETS`, read not copied.** The Reference Reels browser reads
-`data/presets.ts` directly. There is deliberately no second template structure
-and no preview assets — posters are drawn from each reel's own fields via
-`themeFor()`, the same function the renderer uses, so a poster cannot drift from
-the reel. Every `build()` mints fresh scenes and ids, which is what makes the
-"editable copy, original untouched" guarantee structural rather than defensive.
-
-**Branch, then fast-forward — no PRs.** This repo has one committer. Work is
-built on a topic branch (this arc used `landscape-format`), then merged to
-`main` with `--ff-only` and pushed, and the topic branch is deleted. Linear
-history, no merge commits, `main` is the only long-lived branch. The user has
-said plainly that they don't read git; keeping history flat is a deliberate
-kindness to that, not an aesthetic preference. Don't introduce PR ceremony or
-`--no-ff` merges without asking.
+**Branch, then fast-forward — no PRs.** One committer. Topic branch → `--ff-only`
+into `main` → push → delete branch. Linear history, `main` the only long-lived
+branch. The user has said plainly they don't read git; flat history is a
+deliberate kindness, not an aesthetic. Don't introduce PR ceremony or `--no-ff`
+without asking.
 
 ---
 
 ## 3. Current state
 
-`tsc --noEmit` and `vite build` both clean as of the last check. Everything
-described above is implemented and was **verified by rendering actual MP4s and
-measuring pixels** (ffprobe dimensions/frame counts, alpha-weighted centroid
-diffs, ink-colour histograms) — not by reading the preview and assuming.
-Nothing is known-broken or half-finished.
+`npm run check` (tsc + regression gate) and `npm run build` both clean.
+**Git: on `main`, clean, in sync with `origin/main` at `a09042a`** —
+everything below is pushed to `github.com/shibamsinha/flarentmotionengine`.
 
-**V5 was verified by driving the real app, not by reading the code.** All three
-start paths were run end-to-end in the browser: scratch → 1 scene / 24 frames,
-a real JSON import → title, 2 scenes, composition and all three elements with
-roles/sizes/positions intact, and a template → "V4 reel" / 9 scenes / 432
-frames. An invalid file produced the friendly error rather than a stack trace,
-and **MP4 export still renders** (1080×1920 H.264, 24 frames, verified with
-ffprobe after the change). First paint with a saved project present is the
-splash, with the editor not mounted at all — that is the no-flash guarantee.
+**Working and verified by measuring real renders, not by reading previews:**
 
-**Git**: V5 is uncommitted at time of writing. Before it, `main` was clean and
-in sync with `origin/main` at `e19f8ba` — the whole V3 → V4 →
-overlay/extract/logo → landscape arc, pushed to
-`github.com/shibamsinha/flarentmotionengine.git`. `landscape-format` was
-fast-forwarded in and deleted; `main` is the only branch.
+- V1–V5 unchanged. All 16 Reference Reels and 3 templates fingerprint
+  identically after every change this session.
+- V6 objects render through Remotion: card, button, cursor arc + click driving a
+  button to a glowing success state, checkmark drawing on, staggered progress
+  rows — with kinetic typography in the same frame.
+- V7 audio exports correctly. Verified by FFT of the exported stream: a source
+  trim of 10–20s from a tone file produced 440 Hz at project t=0 switching to
+  550 Hz at t=5s — trim, timeline mapping and zero drift in one measurement.
+- Word colour, silent export, canvas dragging of type — all measured in the
+  render (see §6 for the placement caveat that turned out not to be a bug).
+- Split-into-elements now preserves layout (ink boxes within 1–2px) and chains
+  each element's delay to the previous one's *finish*.
 
-**Hosting**: **deliberately deferred.** The user was asked and said they don't
-want to host it now but will later — so this is a decision on hold, not an
-open task. Nothing here is blocked on it.
+**Not built (all V6 brief items, none blocking):** composition presets (§25),
+path-based movement (§20), animated backgrounds (§22), and dragging *nested*
+objects — a child's coordinates are container-relative, so a drag needs to walk
+ancestor transforms.
 
-The constraint that will shape that conversation when it happens: this is **two
-processes**, not one. `npm run dev` runs a Vite dev server (the editor UI,
-port 5173) *and* `server/render-server.mjs` (a Node process that drives
-`@remotion/renderer` + headless Chrome to produce MP4s, port 5174) via
-`concurrently`. A static host can serve the built editor UI, but MP4 export
-needs a long-lived Node process with a real Chrome binary — not a serverless
-fit. Four specifics already established, so they don't need rediscovering:
+**Known imperfection:** after splitting, the lead-in element writes about one
+word slower than it did unsplit. An element paces its words across its own
+window, so five words with the whole scene to fill run slower than the same five
+as the first five of eight. Exact parity needs a per-element duration field —
+a schema addition, not a fix.
 
-- `netlify.toml` **already exists and is committed** (since `114c380`). It
-  deploys the editor *only*, and deliberately 404s `/api/*` and `/out/*` so a
-  failed Export reads as a clean 404 rather than "unexpected token < in JSON."
-- The editor calls `/api/render`, `/api/render/:id` and `/api/upload` as
-  **relative paths** (`ExportBar.tsx`, `ImageControls.tsx`,
-  `OverlayControls.tsx`), resolved in dev only by Vite's proxy
-  (`vite.config.ts`). Any split deployment must either put the renderer on the
-  same origin or make that base URL configurable in those three places.
-- `out/` and `public/uploads/` are **local disk**. An ephemeral filesystem
-  loses both on restart; a hosted renderer needs a volume or object storage.
-- The render server has **no auth**. Public hosting means anyone can queue
-  `crf: 17` / `x264Preset: 'slow'` renders on your CPU.
-
-Recommendation on record (not yet acted on): one always-on container serving
-both `dist/` and the API on a single origin, which makes the relative-path and
-CORS problems vanish for free.
-
-**Dev server is not persistent across tool-call turns in this environment** —
-it stopped at least once mid-arc and had to be restarted manually for browser
-verification. Don't assume it's running; check `curl localhost:5174/api/health`
-or just try to load `localhost:5173` before debugging "why is nothing loading."
+**Deferred by the user, not forgotten:** hosting. They were asked and said not
+now. §5 holds the constraints already worked out.
 
 ---
 
-## 4. Files touched (this arc: V3 → V4 → overlay/extract/logo → landscape)
+## 4. Files touched
 
-**Data model**
-- `src/types/scene.ts` — `TextRole`, `SizePreset`, `PositionPreset`,
-  `CompositionPreset`, `SceneElement` (V3); `VisualStyleName`/`VisualStyleConfig`
-  refs, `Scene.visualStyle`/`styleConfig` (V4); `OverlayImage`,
-  `Scene.hideOverlay` (overlay); `CanvasFormat`, `FlarentVideoProps.format`
-  (landscape).
+Only what this session added or changed. Everything else is V1–V5 and untouched.
 
-**Planner / utils**
-- `src/utils/composition.ts` — new in V3: roles, semantic sizes, position
-  anchors, composition presets, flow layout + collision `separate()`. V4 added
-  nothing here (style is separate). Landscape: every geometry function takes
-  `canvas` now.
-- `src/utils/plan.ts` — the planner. V3 added `planComposed`/`ResolvedElement`/
-  `PlannedElement` alongside the original `planSingle`. V4 added `mergeVisual`
-  (element-over-scene style inheritance) and `PlannedElement.visual`. Landscape:
-  `planScene`'s 5th param, threaded through every helper underneath.
-- `src/utils/visualStyle.ts` — **new in V4**. Style registry, colour tokens,
-  `resolveStyle` (config → theme-resolved paint), `styleCss` (the actual CSS,
-  shared between renderer and editor previews so they can't drift).
-- `src/utils/typography.ts` — V3: nothing structural. Landscape:
-  `SIDE_MARGIN`/`KICKER_MIN`/`KICKER_MAX`/`RAPID_BASE_SIZE` became functions
-  (`sideMargin()` etc.) of a `canvas` param; `fitToWidth`/`widthOf` cache keys
-  now include `canvas.width`.
-- `src/utils/imageLayout.ts`, `src/utils/transition.ts` — landscape: `canvas`
-  param threaded through (`composeImage`, `exitSpecFor`, `planTransition`).
-- `src/utils/timing.ts` — landscape: `CANVAS_FORMATS`, `canvasFor()`,
-  `DEFAULT_FORMAT`. `CANVAS` still exists, now means "portrait / the default,"
-  not "the only frame."
-- `src/utils/importScript.ts` — V4: `visualStyle`/`styleConfig` read + written
-  on scenes and elements. Overlay: document-level `overlay`, per-scene
-  `hideOverlay`. Landscape: `format` (with synonyms) read, inferred from
-  width/height if absent, written back by `serialiseProject`.
-- `src/utils/persistence.ts` — sanitisers extended in step with each feature
-  above (`visualStyle`/`styleConfig`, `overlay`, `format`).
-
-**Motion / rendering**
-- `src/components/motion/StyledText.tsx` — **new in V4**. The one place a
-  glyph is painted; `LetterSplit` for SPLIT's letter-band mode.
-- `src/components/motion/primitives.tsx` — `TypeBlock`/`StyleBlock` gained
-  `visual`/`renderWord`'s third `glyph` arg (V4); `MotionProps.canvas`
-  (landscape, required — `SceneRenderer` always supplies it).
-- `src/components/motion/{Massive,Slide}.tsx` — the two styles with
-  frame-relative throws; now read `canvas` from props instead of a module
-  `CANVAS` constant. Punch/Stack/Rapid needed no change (no frame-relative
-  math).
-- `src/components/motion/Outgoing.tsx` — V4: exits per-piece with each
-  element's own visual style (`exitPiecesOf`). Landscape: `canvas` prop.
-- `src/components/motion/OverlayLayer.tsx` — **new**. The static overlay
-  itself; `overlayRect()` now takes `canvas`.
-- `src/compositions/{FlarentVideo,SceneRenderer}.tsx` — `SceneRenderer` reads
-  `useVideoConfig()` once and builds the `canvas` object passed to `planScene`
-  and every style component; `calculateFlarentMetadata` resolves `format` →
-  real width/height.
-
-**Editor**
-- `src/App.tsx` — owns `format` (+ `canvasTarget` selection state from the
-  overlay work); topbar format switch; wires `canvas` down to every consumer
-  that needs it outside the Remotion tree.
-- `src/components/editor/Logo.tsx` — **new**. Renders `public/brand/*.png`.
-- `src/components/editor/{OverlayControls,OverlayStage}.tsx`,
-  `src/components/motion/OverlayLayer.tsx` — the static-overlay feature.
-- `src/components/editor/{BoxStage,ImageStage}.tsx` — `BoxStage` extracted as
-  the shared drag primitive; `ImageStage` thinned to just the picture-specific
-  bits.
-- `src/components/editor/ExtractPanel.tsx` — **new**. "Extract JSON," a
-  first-class button (moved out of the old Import sheet's buried copy button).
-- `src/components/editor/{ElementEditor,VisualStyleControls}.tsx` —
-  `VisualStyleControls` is **new** (V4 style picker with live-rendered
-  previews via `styleCss`); `ElementEditor` wires it in per-element.
-- `src/components/editor/{SceneEditor,ImageControls,ExportBar,VideoPreview}.tsx`
-  — threaded `canvas`/`format` through as each feature needed it.
-- `src/index.css` — style-picker swatches/cards, drag-stage handle colours
-  (image vs. overlay), format-switch glyph, logo lockup sizing.
-
-**Server / scripts / docs**
-- `server/render-server.mjs` — accepts `format` in the render POST body,
-  forwards it in `inputProps`. **This file does not hot-reload** — see
-  Gotchas.
-- `scripts/brand-crop.mjs` — **new**. Regenerates the two logo crops from
-  `public/brand/logo.png`.
-- `templates/SCHEMA.md`, `README.md` — sections added for V3, V4, overlay,
-  Extract JSON, logo, landscape. Read these before re-explaining any of the
-  above from scratch.
-
-**V5 — startup flow** (all additive; nothing in the renderer or the editor was
-touched, see §2)
+**Startup flow (V5)**
 - `src/App.tsx` — reduced to the phase router (`splash → start → editor`).
-- `src/Editor.tsx` — **new**. The former `App` body, extracted verbatim.
-- `src/types/project.ts`, `src/utils/project.ts` — **new**. The `Project` type
-  and the only three ways to make one.
-- `src/utils/splashMotion.ts` — **new**. Measured ratios, fitted beziers and
-  timings for the splash. The measurement method is written down in the file.
-- `src/components/start/{Splash,StartScreen,TemplateBrowser}.tsx` — **new**.
-- `src/components/editor/Logo.tsx` — one added export (`SPLASH_WORDMARK`).
-- `src/index.css` — V5 block appended; no existing rule was modified.
-- `scripts/splash-wordmark.mjs`, `public/brand/splash-wordmark.png`,
-  `reference/splash.mp4` — **new**. The wordmark asset and the source it is cut
-  from.
-- `scripts/favicon.mjs`, `public/{favicon.ico,favicon.png,apple-touch-icon.png}`,
-  `index.html` — **new**. Browser icons, cut from `logo.png` like every other
-  brand crop. A standalone `public/brand/favicon.png` was supplied but is
-  **not** the source: it carries the same artwork at 68×64 of ink inside a
-  500px canvas, against `logo.png`'s 268×258. It is currently unused.
+- `src/Editor.tsx` — **new**; the former `App` body, extracted verbatim.
+- `src/types/project.ts`, `src/utils/project.ts` — the `Project` type and its
+  only constructors.
+- `src/utils/splashMotion.ts` — measured ratios, fitted beziers, timings.
+- `src/components/start/{Splash,StartScreen,TemplateBrowser,ParticleField}.tsx`
+  — launch sequence, three-door start screen, Reference Reels browser, and the
+  ported flarent.online constellation background.
+- `src/data/sampleProject.ts` — the generated sample offered on the import view.
+
+**V6 objects**
+- `src/types/object.ts` — the object model.
+- `src/utils/objectMotion.ts` — 9 entrances, 6 emphases, 5 exits as channel
+  recipes.
+- `src/utils/planObjects.ts` — seconds→frames, group sequencing, cursor actions
+  folded into their target's state timeline.
+- `src/utils/importObjects.ts` — objects across the JSON boundary.
+- `src/components/motion/ObjectLayer.tsx`, `objects/icons.tsx` — the renderer
+  and 18 stroked icons.
+- `src/components/editor/{ObjectList,ObjectInspector,ObjectStage}.tsx` — list,
+  kind-specific inspector, canvas box.
+- `src/data/objects.ts` — object constructors and immutable tree edits.
+- `src/data/v6Demos.ts` — `v6-mixed` and `v6-objects` demo reels.
+
+**V7 audio**
+- `src/types/audio.ts` — `ProjectAudio`; source range and timeline position are
+  separate fields on purpose.
+- `src/components/motion/AudioTrack.tsx` — Remotion `<Audio>` in the composition.
+- `src/utils/waveform.ts` — cheap duration read, expensive cached peaks.
+- `src/components/editor/AudioControls.tsx` — import, waveform trim, volume,
+  fades, missing-asset state.
+
+**Word colour / placement**
+- `src/components/editor/WordColors.tsx` — per-word picker.
+- `src/components/editor/TextStage.tsx` — drag type on the canvas.
+- `src/components/motion/primitives.tsx` — `recolour()` at the glyph seam;
+  `ENTER_SECONDS` as the single source of entrance length.
+- `src/utils/plan.ts` — `mergeWordColors`, `wordColors` on `PlannedElement`.
+
+**Shared / modified**
+- `src/types/scene.ts` — `objects`, `audio`, `wordColors` added; all optional.
+- `src/utils/importScript.ts` — reads/writes objects, audio, word colours;
+  scene-empty rule widened to "text, elements **or** objects".
+- `src/utils/persistence.ts` — `sanitiseAudio`; audio in the saved payload.
+- `src/compositions/{FlarentVideo,SceneRenderer}.tsx` — audio track; object
+  layer split around the type by `layer` sign.
+- `src/components/editor/ElementEditor.tsx` — `seedElements` rewritten to seed
+  from the real plan; `cascadeDelays` + "Re-time cascade" button.
+- `server/render-server.mjs` — `?kind=audio` uploads (64MB cap), audio in the
+  render body. **Does not hot-reload.**
+- `scripts/baseline.mjs`, `test/baseline.json` — the regression gate.
+- `scripts/{favicon,splash-wordmark}.mjs`, `public/favicon*`,
+  `public/brand/splash-wordmark.png`, `index.html` — brand assets.
+- `src/index.css` — all new UI; appended, no existing rule modified.
+- `README.md`, `templates/SCHEMA.md` — V5/V6/V7 sections and AI prompt blocks.
 
 ---
 
 ## 5. Next steps (in order)
 
-1. **The README has no "Hosting" section**, but `netlify.toml`'s header comment
-   tells the reader to go read one. Smallest real task outstanding: either
-   write that section (§3 has the material) or drop the dangling reference.
-2. Typeface + brand black hex — flagged as outstanding since the V1 handoff,
-   never resolved. Needs the actual values/files from the user.
-3. Watch the V4/landscape reels and tune taste dials — gradient colours,
-   outline stroke-weight default, `ROLE_*` constants, composition `gap`s.
-   Plumbing is done; these are opinions, not architecture.
-4. The AI layer itself. `templates/SCHEMA.md` is AI-ready (V4 + landscape
-   prompt blocks included); nothing has been built against it yet.
-5. Hosting — **deferred by the user, not forgotten.** Don't re-open it
-   unprompted; §3 holds everything needed when they do.
+1. **Watch the V6/V7 demos and give taste feedback.** Open `V6 typography +
+   motion graphics` from Reference Reels. Plumbing is done; the motion curves,
+   glow strengths and default sizes are opinions nobody has judged yet.
+2. **Composition presets (V6 §25)** — "UI Card Intro", "Button Interaction" etc.
+   The building blocks all exist; this is assembling them.
+3. **Per-element duration**, if exact split fidelity matters. Schema addition;
+   would close the §3 imperfection.
+4. **Nested object dragging** — needs ancestor-transform walking in
+   `ObjectStage`.
+5. **The README has no "Hosting" section** but `netlify.toml`'s header comment
+   tells the reader to go read one. Either write it (§3 of the old handoff has
+   the material, summarised below) or drop the reference.
+6. **Typeface + brand black hex** — outstanding since V1. It is why the splash
+   wordmark ships as a bitmap. Needs the actual files from the user.
+7. **The AI layer.** `templates/SCHEMA.md` now covers V6 objects and V7 audio
+   with prompt blocks; nothing has been built against it.
+
+**Hosting, when it is reopened** (deferred by the user, don't raise unprompted):
+two processes, not one. `netlify.toml` already deploys the editor only and
+404s `/api/*` deliberately. The editor calls `/api/*` as **relative paths**,
+resolved in dev only by Vite's proxy — a split deployment needs same-origin or a
+configurable base URL. `out/` and `public/uploads/` are local disk. The render
+server has **no auth**. Recommendation on record: one always-on container
+serving both `dist/` and the API on one origin.
 
 ---
 
 ## 6. Gotchas
 
-- **The Browser pane does not run `requestAnimationFrame` unless it is
-  displayed.** Measured: 0 rAF callbacks in 700ms with `document.hidden === false`
-  and `visibilityState === "visible"`, and screenshots fail with "the Browser
-  pane is not displayed, so the page is not compositing frames". This produced a
-  confidently wrong conclusion twice — that flarent.online's hero background was
-  static, and then that the port of it was too. **Canvas contents not changing
-  proves nothing in this environment.** Verify animation logic in Node instead
-  (see the `Particle` export in `ParticleField.tsx`, which exists for exactly
-  that), or ask the user to display the pane.
-- **`src/index.css` is one flat 2400-line stylesheet with no scoping, so a new
+- **`src/index.css` is one flat ~2500-line stylesheet with no scoping, so a new
   rule can silently redefine an old one.** This happened: a `.swatch` added for
   the word-colour picker (22px) overrode the scene list's existing `.swatch`
-  (a 9px field dot), which blew the `.scene-row` grid apart across the whole
-  editor — and nothing failed, typechecked or rendered differently. Before
-  adding CSS, grep for the class name. To check the whole file afterwards:
+  (a 9px field dot) and blew the `.scene-row` grid apart across the whole
+  editor. Nothing failed — it typechecked, built and rendered. Grep the class
+  name before adding CSS, prefer a prefixed name (`.word-swatch`,
+  `.object-row`), and audit with:
 
       python3 -c "
       import re,pathlib
@@ -329,67 +231,69 @@ touched, see §2)
           d.setdefault(' '.join(m.group(1).split()).rstrip(','),[]).append(s[:m.start()].count(chr(10))+1)
       print({k:v for k,v in d.items() if len(v)>1} or 'no duplicate selectors')"
 
-  Prefer a prefixed name (`.word-swatch`, `.object-row`) over a generic one.
 - **`npm run dev` uses `concurrently -k`, so killing one server kills both.**
   Restarting the render server after editing `render-server.mjs` (which does not
-  hot-reload) therefore also takes down Vite on 5173, silently. Restart both, or
-  run `npx vite` and `node server/render-server.mjs` separately.
-- **Audio sync is structural, not maintained.** V7 puts Remotion's `<Audio>`
-  inside `FlarentVideo`, so the editor's `<Player>` and `renderMedia` drive it
-  from the same clock they draw scenes from. There is deliberately no
-  `HTMLAudioElement` in the editor and no play button on the audio panel — a
-  second playback surface would be a second clock. If audio ever needs to be
-  "kept in sync", something has been built in the wrong place.
-- **`ffmpeg`'s `cropdetect` lies about small bright objects.** Measuring the
-  splash with it gave the mark as 76×104 (aspect 0.73) and sent an hour into
-  "why doesn't the logo asset match?". NumPy on the extracted PNGs gave the true
-  116×116 (aspect 1.000), which matches `logo.png`'s own 1.039 and meant the
-  existing asset was correct all along. For ink geometry, decode frames and
-  threshold them yourself; `cropdetect` is for finding letterbox bars.
-- **The splash wordmark is a bitmap because the brand typeface is still
-  missing** (§5 item 2). It reads "Flarent Motion Engine"; `logo.png` stops at
-  "Flarent Motion". Don't "improve" it by setting the text in Inter — that puts
-  a foreign letterform directly against the real logo. When the font arrives,
-  delete `public/brand/splash-wordmark.png` and set live text.
-- **`prefers-reduced-motion` skips the splash rather than slowing it** (600ms to
-  the start screen). Holding a static logo for the full 2.5s is a worse answer
-  than getting out of the way; if you change this, change it in that direction.
-- **This file (SESSION_HANDOFF.md) can go stale** — an earlier version of it
-  claimed "git init" was still outstanding when the repo already had a commit
-  and a GitHub remote. Verify repo/environment state directly (`git status`,
-  `git log`, `curl` the health endpoints) rather than trusting a prior
-  handoff's claims about it.
-- **The render server does not hot-reload.** Editing `server/render-server.mjs`
-  and then exporting without restarting `npm run dev` silently runs the old
-  code — this actually happened mid-arc (the static overlay was missing from
-  an export because the server process predated the feature). Always restart
-  after touching that file, and verify with `curl localhost:5174/api/health`.
-- **`ElementEditor`'s per-element style/animation cards render before the
-  scene-level ones in DOM order.** A naive `querySelector('.style-card')`
-  grabs the element override, not the scene default — produced a false "bug"
-  mid-session. Target controls by their label text/container, not position.
-- **The renderer has an inherent noise floor between identical renders** —
-  measured by rendering the same input twice: up to ~1.5–2px of alpha-weighted
-  centroid drift, ~20/430 frames with >0.7px bbox delta, from H.264/antialiasing/
-  SVG-filter rasterization jitter, not layout bugs. V4's gradient/stroke SVG
-  filters raised this floor slightly versus pre-V4. **When checking for a
-  regression, diff against a same-code two-run baseline, never a historical
-  file** — otherwise you'll chase phantom regressions (did exactly this once,
-  resolved by re-measuring).
-- **`CANVAS` in `utils/timing.ts` now means "portrait / the default," not
-  "the active frame."** Any new sizing/layout function must take an explicit
-  `canvas` parameter — never read `CANVAS.width`/`height` and assume it's
-  correct for the current project.
-- **Measurement caches are keyed on frame width now** (`fitToWidth`/`widthOf`
-  in `typography.ts`). Any new per-frame-dependent measurement needs the same
-  treatment or you'll get portrait-cached values leaking into a landscape
-  render (or vice versa) within one process's lifetime.
+  hot-reload) silently takes Vite down with it. A "vite exited with code 143" is
+  a *symptom*; read the `[RENDER]` lines above it. Free both ports with
+  `lsof -ti:5173 -ti:5174 | xargs kill`.
+
+- **The Browser pane does not run `requestAnimationFrame` unless it is
+  displayed.** Measured: 0 rAF callbacks in 700ms with `document.hidden === false`
+  and `visibilityState === "visible"`; screenshots fail with "the pane is not
+  displayed, so the page is not compositing frames". This produced a confidently
+  wrong conclusion twice — that flarent.online's background was static, then that
+  the port of it was. **Canvas contents not changing proves nothing here.**
+  Verify animation logic in Node (see the exported `Particle` in
+  `ParticleField.tsx`, which exists for that), or ask the user to show the pane.
+
+- **DOM layout metrics read 0 in the pane's JS context.**
+  `getBoundingClientRect`, `offsetWidth` and `getComputedStyle` all return
+  zeroes. Verify geometry by measuring rendered screenshots or by deriving from
+  the CSS, not by querying the DOM.
+
+- **`planScene` needs a DOM** (`measureText` from `@remotion/layout-utils`), so
+  it cannot run in plain Node. The regression gate therefore fingerprints the
+  JSON schema and the timeline, not pixels. Layout regressions still need a
+  render diff — and against a *same-code two-run* baseline, never a historical
+  file, because the renderer has a ~1.5–2px noise floor.
+
+- **`ffmpeg`'s `cropdetect` lies about small bright objects.** It reported the
+  splash mark as 76×104 (aspect 0.73) when NumPy on the extracted frames gave
+  116×116 (aspect 1.000, matching `logo.png`'s 1.039). An hour went into "why
+  doesn't the logo asset match?" For ink geometry, decode frames and threshold
+  them yourself.
+
+- **Extract → import is not byte-identical, and that is not a bug.** The
+  importer snaps durations onto the frame grid, so `reference` and `19s` (scenes
+  authored at 0.85/0.75/0.65s, none a whole frame at 30fps) come back as
+  0.867/0.733/0.667s. They render identically and it settles after one pass. The
+  gate tests **idempotence**, not byte-identity, and records the affected scenes
+  under `durationsSnapped`.
+
+- **Scene ids come from `Date.now()`**, so any fingerprint must normalise them
+  or it compares two runs and always fails.
+
+- **`ElementEditor`'s per-element cards render before the scene-level ones in
+  DOM order.** A naive `querySelector('.style-card')` grabs the element
+  override, not the scene default. Target by label text, not position.
+
+- **Object labels need `fontFamily` explicitly.** Without it they fall back to
+  the UA serif in the headless render — which is what they did, next to type set
+  in Flarent Grotesk. Only visible by looking at the MP4, not the preview.
+
+- **`CANVAS` in `utils/timing.ts` means "portrait / the default", not "the
+  active frame".** Any new sizing function must take an explicit `canvas`
+  parameter. Measurement caches are keyed on frame width for the same reason.
+
 - **`Scene.style` is the animation; `Scene.visualStyle` is the paint.** Same
-  split on `PlannedElement.style` vs `PlannedElement.visual`. Don't conflate
-  when reading or extending either type.
+  split on `PlannedElement.style` vs `.visual`. Don't conflate.
+
 - **Frame 0 of every reel is blank by design** — entrance opacity starts at 0.
-  Not a bug; don't "fix" it without deliberately changing V2's entrance timing
-  (which would ripple through every style).
-- **`.gitignore` already correctly excludes** `node_modules`, `dist`, render
-  outputs in `out/`, and `public/uploads/*` — confirmed empirically before the
-  last commit; `git add -A` is safe in this repo.
+
+- **Never redraw the brand logo from memory.** `public/brand/logo.png` is the
+  source of truth; `scripts/brand-crop.mjs` and `scripts/favicon.mjs` derive from
+  it. An earlier hand-drawn SVG approximation was explicitly rejected.
+
+- **This file can go stale.** An earlier version claimed `git init` was still
+  outstanding when the repo already had a remote. Verify environment state
+  directly (`git status`, `curl` the health endpoints) rather than trusting it.
