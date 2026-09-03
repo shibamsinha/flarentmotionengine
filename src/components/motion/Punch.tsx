@@ -13,6 +13,7 @@ import React from 'react';
 import { BLUR_GAIN } from '../../utils/motionBlur';
 import {
   ENTER,
+  ENTER_SECONDS,
   StyleBlock,
   enterValues,
   framesFor,
@@ -27,7 +28,7 @@ export const Punch: React.FC<MotionProps> = ({
   visual,
   transition,
 }) => {
-  const transformFrames = framesFor(ENTER.transform, fps);
+  const transformFrames = framesFor(ENTER_SECONDS.punch, fps);
   const opacityFrames = framesFor(ENTER.opacity * 0.75, fps);
   const blurFrames = framesFor(ENTER.blur * 0.8, fps);
 

@@ -114,7 +114,12 @@ export const SceneEditor: React.FC<{
         ) : null}
 
         {composed ? (
-          <ElementEditor scene={scene} palette={palette} onChange={onChange} />
+          <ElementEditor
+            scene={scene}
+            palette={palette}
+            onChange={onChange}
+            canvas={canvas}
+          />
         ) : (
           <>
             <div className="field">

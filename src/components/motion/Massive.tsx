@@ -16,6 +16,7 @@ import { EASE, clamp01 } from '../../utils/easing';
 import { BLUR_GAIN } from '../../utils/motionBlur';
 import {
   ENTER,
+  ENTER_SECONDS,
   StyleBlock,
   combine,
   enterValues,
@@ -33,7 +34,7 @@ export const Massive: React.FC<MotionProps> = ({
   transition,
   canvas,
 }) => {
-  const transformFrames = framesFor(ENTER.transform * 1.35, fps);
+  const transformFrames = framesFor(ENTER_SECONDS.massive, fps);
   const blurFrames = framesFor(ENTER.blur, fps);
   const opacityFrames = framesFor(ENTER.opacity * 0.7, fps);
 

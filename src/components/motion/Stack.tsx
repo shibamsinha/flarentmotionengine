@@ -23,6 +23,7 @@ import {
   TypeBlock,
   amplify,
   carryValues,
+  ENTER_SECONDS,
   enterValues,
   framesFor,
   type MotionProps,
@@ -64,7 +65,7 @@ export const Stack: React.FC<MotionProps> = ({
   visual,
   transition,
 }) => {
-  const transformFrames = framesFor(0.11, fps);
+  const transformFrames = framesFor(ENTER_SECONDS.stack, fps);
   const opacityFrames = framesFor(0.07, fps);
   const blurFrames = framesFor(0.06, fps);
 

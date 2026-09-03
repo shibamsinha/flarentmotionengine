@@ -38,6 +38,27 @@ export const ENTER = {
   blur: 0.18,
 } as const;
 
+/**
+ * How long each style's entrance takes, in seconds.
+ *
+ * The single source of truth for "when has this finished arriving?" — the style
+ * components below read it for their own `transformFrames`, and the editor
+ * reads it to chain one element's entrance onto the end of the previous one.
+ * Without it the editor would need its own copy of these numbers, and the two
+ * would drift the first time a curve was retuned.
+ *
+ * SLIDE varies with direction (horizontal travels further, so takes longer);
+ * the value here is the horizontal case, which is the right one for scheduling
+ * because it is the upper bound.
+ */
+export const ENTER_SECONDS = {
+  punch: ENTER.transform,
+  massive: ENTER.transform * 1.35,
+  slide: ENTER.transform * 1.1,
+  stack: 0.11,
+  rapid: ENTER.transform,
+} as const;
+
 export type MotionValues = {
   opacity: number;
   x: number;

@@ -21,6 +21,7 @@ import type {
 } from '../../types/scene';
 import { blankElement, element as makeElement } from '../../data/defaultScenes';
 import { ANIMATION_STYLES, styleDefinition } from '../motion/registry';
+import { ENTER_SECONDS } from '../motion/primitives';
 import {
   COMPOSITIONS,
   COMPOSITION_PRESETS,
@@ -112,6 +113,73 @@ const plannedWords = (plan: ScenePlan) =>
     element.block.lines.flatMap((line) => line.words),
   );
 
+/**
+ * Re-time a set of elements so each one starts when the previous has finished
+ * arriving — not when it started.
+ *
+ * This cannot be done in one pass. An element's last word lands at a frame that
+ * depends on its own delay (STACK spreads its build across whatever is left of
+ * the scene, so a later start compresses it), and the next element's delay
+ * depends on that landing. So the plan is re-run once per element: after pass
+ * i, element i's delay is final and its finish is known, which fixes element
+ * i+1's delay. n-1 passes, each cheap because text measurement is cached.
+ *
+ * Uses each element's *own* animation, so a cascade computed after some runs
+ * were switched to MASSIVE leaves the right amount of room for them.
+ */
+export const cascadeDelays = (
+  scene: Scene,
+  elements: SceneElement[],
+  { palette, canvas }: { palette: PaletteName; canvas: VideoConfig },
+): SceneElement[] => {
+  if (elements.length < 2) return elements;
+  const frames = Math.max(1, totalFrames([scene], canvas.fps));
+  const delays = new Array(elements.length).fill(0);
+
+  const withDelays = () =>
+    elements.map((element, i) => ({
+      ...element,
+      ...(delays[i] > 0 ? { delay: delays[i] / canvas.fps } : { delay: undefined }),
+    }));
+
+  for (let i = 0; i < elements.length - 1; i++) {
+    const step = planScene(
+      { ...scene, elements: withDelays() },
+      frames,
+      canvas.fps,
+      palette,
+      canvas,
+    );
+    const el = step.elements[i];
+    if (!el) break;
+    const words = el.block.lines.flatMap((line) => line.words);
+    const lastStart =
+      words.length > 0 ? Math.max(...words.map((w) => w.start)) : delays[i];
+    delays[i + 1] = lastStart + Math.round(ENTER_SECONDS[el.style] * canvas.fps);
+  }
+
+  /*
+   * If the chain runs past the end of the scene the tail would never be seen.
+   * Rather than dropping elements, compress the whole cascade proportionally so
+   * the last one still completes — a fast sequence is a legitimate reading of a
+   * short scene; an invisible element is not.
+   */
+  const last = elements.length - 1;
+  const lastStyle = elements[last]?.animation ?? scene.style;
+  const room = Math.max(1, frames - 1 - Math.round(ENTER_SECONDS[lastStyle] * canvas.fps));
+  if (delays[last] > room) {
+    const squeeze = room / delays[last];
+    for (let i = 0; i < delays.length; i++) delays[i] = Math.round(delays[i] * squeeze);
+  }
+
+  return elements.map((element, i) => {
+    const { delay: _drop, ...rest } = element;
+    return delays[i] > 0
+      ? { ...rest, delay: Number((delays[i] / canvas.fps).toFixed(3)) }
+      : (rest as SceneElement);
+  });
+};
+
 export const seedElements = (
   scene: Scene,
   /**
@@ -156,23 +224,16 @@ export const seedElements = (
         // The ink centre of the run, which is exactly what `x`/`y` mean.
         x: (left + right) / 2 / canvas.width,
         y: found.reduce((sum, w) => sum + w.cy, 0) / found.length / canvas.height,
-        // The frame the run first appeared on becomes its delay, so the
-        // cascade the single block had is reproduced across the elements.
-        delay: Math.max(0, Math.min(...found.map((w) => w.start))) / canvas.fps,
         fontSize: Math.max(...found.map((w) => w.fontSize)),
       };
     });
 
-    const seeded = plain.map((element, index) => {
+    const placed = plain.map((element, index) => {
       const target = targets[index];
-      if (!target) return element;
-      return {
-        ...element,
-        x: target.x,
-        y: target.y,
-        ...(target.delay > 0.001 ? { delay: Number(target.delay.toFixed(3)) } : {}),
-      };
+      return target ? { ...element, x: target.x, y: target.y } : element;
     });
+
+    const seeded = cascadeDelays(scene, placed, context);
 
     /*
      * One correction pass for size. A role resolves to a size preset, which
@@ -251,7 +312,9 @@ export const ElementEditor: React.FC<{
   scene: Scene;
   palette: PaletteName;
   onChange: (patch: Partial<Scene>) => void;
-}> = ({ scene, palette, onChange }) => {
+  /** Needed to re-time the cascade; without it the button is hidden. */
+  canvas?: VideoConfig;
+}> = ({ scene, palette, onChange, canvas }) => {
   const elements = scene.elements ?? [];
 
   /**
@@ -452,6 +515,24 @@ export const ElementEditor: React.FC<{
           >
             Add element
           </button>
+          {/*
+            Splitting sets the cascade once. Changing an element's animation
+            afterwards changes how long it takes to arrive, and the delays
+            around it no longer fit — so re-timing has to be something you can
+            ask for, not only something that happens at the split.
+          */}
+          {canvas && elements.length > 1 ? (
+            <button
+              type="button"
+              className="btn"
+              title="Re-space the delays so each element starts when the one before it finishes"
+              onClick={() =>
+                commit(cascadeDelays(scene, elements, { palette, canvas }))
+              }
+            >
+              Re-time cascade
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn"
