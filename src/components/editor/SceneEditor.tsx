@@ -169,7 +169,16 @@ export const SceneEditor: React.FC<{
               <button
                 type="button"
                 className="btn wide"
-                onClick={() => onChange({ elements: seedElements(scene) })}
+                onClick={() =>
+                  onChange({
+                    elements: seedElements(
+                      scene,
+                      // Without a canvas the split falls back to the plain
+                      // grammar rather than guessing at a frame size.
+                      canvas ? { palette, canvas } : undefined,
+                    ),
+                  })
+                }
               >
                 Compose · split into elements
               </button>

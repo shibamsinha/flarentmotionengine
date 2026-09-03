@@ -10,6 +10,7 @@
 import React from 'react';
 import type {
   AnimationStyle,
+  VideoConfig,
   CompositionPreset,
   PaletteName,
   PositionPreset,
@@ -32,21 +33,44 @@ import {
   TEXT_ROLES,
 } from '../../utils/composition';
 import { isEmphasised, splitLines, splitWords } from '../../utils/typography';
+import { planScene, type ScenePlan } from '../../utils/plan';
+import { totalFrames } from '../../utils/timing';
 import { VisualStyleControls } from './VisualStyleControls';
 import { WordColors } from './WordColors';
 
 /**
  * Turn a V2 text scene into elements without changing what it looks like.
  *
- * Follows the same grammar the single-block planner uses — the emphasised run
- * is the hero, what reads before it is a lead-in, what reads after is a
- * qualifier — so switching a scene to elements is a change of *control*, not a
- * change of design. Landing on a different layout would make the button feel
- * like it broke something.
+ * The grammar is the same one the single-block planner uses — the emphasised
+ * run is the hero, what reads before it is a lead-in, what reads after is a
+ * qualifier — but that alone is not enough, and for a long time this button
+ * quietly wrecked scenes.
+ *
+ * Two things went wrong the moment a scene was split:
+ *
+ * **Everything started at once.** One block staggers its own words; four blocks
+ * each begin at frame 0. A MASSIVE run would therefore land complete while a
+ * STACK run beside it was still writing itself out, which reads as two
+ * unrelated animations fighting rather than one sentence arriving.
+ *
+ * **The type spread out.** Split elements join the composition's flow, which
+ * inserts a gap of 2–5.5% of the frame height between them. A tight single line
+ * became several loosely stacked blocks.
+ *
+ * Both are fixed the same way: plan the *unsplit* scene, see exactly where the
+ * planner put every word and when it revealed it, and seed the new elements
+ * with those positions, delays and sizes. Splitting then changes what you can
+ * control, not what you see — which is what the button always claimed to do.
+ *
+ * Falls back to the plain grammar if the scene cannot be planned (a half-typed
+ * line, fonts not yet loaded); a slightly loose split is much better than a
+ * button that does nothing.
  */
-export const seedElements = (scene: Scene): SceneElement[] => {
+
+/** The runs a line breaks into: the emphasised part, and what surrounds it. */
+const runsOf = (scene: Scene): { text: string; role: TextRole }[] => {
   const lines = splitLines(scene.text);
-  if (lines.length === 0) return [blankElement()];
+  if (lines.length === 0) return [];
 
   const emphasis = scene.emphasis ?? [];
   const marked = lines.map((line) =>
@@ -55,16 +79,12 @@ export const seedElements = (scene: Scene): SceneElement[] => {
 
   if (lines.length > 1) {
     const heroIndex = marked.indexOf(true) >= 0 ? marked.indexOf(true) : lines.length - 1;
-    return lines.map((line, index) =>
-      makeElement(line, {
-        role:
-          index === heroIndex ? 'primary' : index < heroIndex ? 'secondary' : 'support',
-        animation: scene.style,
-      }),
-    );
+    return lines.map((line, index) => ({
+      text: line,
+      role: (index === heroIndex ? 'primary' : index < heroIndex ? 'secondary' : 'support') as TextRole,
+    }));
   }
 
-  // One line: split it into the emphasised run and what surrounds it.
   const words = splitWords(lines[0]);
   const flags =
     emphasis.length > 0
@@ -80,12 +100,107 @@ export const seedElements = (scene: Scene): SceneElement[] => {
   });
 
   const heroIndex = runs.findIndex((run) => run.hero);
-  return runs.map((run, index) =>
-    makeElement(run.words.join(' '), {
-      role: run.hero ? 'primary' : index < heroIndex ? 'secondary' : 'support',
-      animation: scene.style,
-    }),
+  return runs.map((run, index) => ({
+    text: run.words.join(' '),
+    role: (run.hero ? 'primary' : index < heroIndex ? 'secondary' : 'support') as TextRole,
+  }));
+};
+
+/** Every planned word, in the order the planner laid them out. */
+const plannedWords = (plan: ScenePlan) =>
+  plan.elements.flatMap((element) =>
+    element.block.lines.flatMap((line) => line.words),
   );
+
+export const seedElements = (
+  scene: Scene,
+  /**
+   * Supplied by the editor so the seed can be measured against the real
+   * layout. Optional: without it this degrades to the old grammar-only split.
+   */
+  context?: { palette: PaletteName; canvas: VideoConfig },
+): SceneElement[] => {
+  const runs = runsOf(scene);
+  if (runs.length === 0) return [blankElement()];
+
+  const plain = runs.map((run) =>
+    makeElement(run.text, { role: run.role, animation: scene.style }),
+  );
+  if (!context) return plain;
+
+  try {
+    const { palette, canvas } = context;
+    const frames = Math.max(1, totalFrames([scene], canvas.fps));
+    const before = planScene(scene, frames, canvas.fps, palette, canvas);
+
+    // Match each run's words to the planner's, consuming in order so a word
+    // that appears twice maps to the right instance.
+    const pool = plannedWords(before);
+    let cursor = 0;
+    const targets = runs.map((run) => {
+      const wanted = splitWords(run.text);
+      const found: typeof pool = [];
+      for (const word of wanted) {
+        const at = pool.findIndex(
+          (candidate, i) => i >= cursor && candidate.text === word,
+        );
+        if (at >= 0) {
+          found.push(pool[at]);
+          cursor = at + 1;
+        }
+      }
+      if (found.length === 0) return null;
+      const left = Math.min(...found.map((w) => w.cx - w.width / 2));
+      const right = Math.max(...found.map((w) => w.cx + w.width / 2));
+      return {
+        // The ink centre of the run, which is exactly what `x`/`y` mean.
+        x: (left + right) / 2 / canvas.width,
+        y: found.reduce((sum, w) => sum + w.cy, 0) / found.length / canvas.height,
+        // The frame the run first appeared on becomes its delay, so the
+        // cascade the single block had is reproduced across the elements.
+        delay: Math.max(0, Math.min(...found.map((w) => w.start))) / canvas.fps,
+        fontSize: Math.max(...found.map((w) => w.fontSize)),
+      };
+    });
+
+    const seeded = plain.map((element, index) => {
+      const target = targets[index];
+      if (!target) return element;
+      return {
+        ...element,
+        x: target.x,
+        y: target.y,
+        ...(target.delay > 0.001 ? { delay: Number(target.delay.toFixed(3)) } : {}),
+      };
+    });
+
+    /*
+     * One correction pass for size. A role resolves to a size preset, which
+     * resolves to a font size that will not generally equal what the single
+     * block chose. `scale` multiplies the preset's value, so the ratio between
+     * what we wanted and what we got is exactly the scale needed — linear, so
+     * one pass is not an approximation.
+     */
+    const after = planScene(
+      { ...scene, elements: seeded },
+      frames,
+      canvas.fps,
+      palette,
+      canvas,
+    );
+    return seeded.map((element, index) => {
+      const target = targets[index];
+      const actual = after.elements[index]?.block.heroSize;
+      if (!target || !actual || actual <= 0) return element;
+      const scale = target.fontSize / actual;
+      // Below a percent the correction is invisible and only adds noise to the
+      // extracted JSON.
+      if (Math.abs(scale - 1) < 0.01) return element;
+      return { ...element, scale: Number(scale.toFixed(3)) };
+    });
+  } catch {
+    return plain;
+  }
 };
 
 function Select<T extends string>({
