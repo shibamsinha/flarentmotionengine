@@ -15,8 +15,8 @@ import {
   ENTER,
   ENTER_SECONDS,
   StyleBlock,
+  enterTiming,
   enterValues,
-  framesFor,
   type MotionProps,
 } from './primitives';
 
@@ -28,9 +28,10 @@ export const Punch: React.FC<MotionProps> = ({
   visual,
   transition,
 }) => {
-  const transformFrames = framesFor(ENTER_SECONDS.punch, fps);
-  const opacityFrames = framesFor(ENTER.opacity * 0.75, fps);
-  const blurFrames = framesFor(ENTER.blur * 0.8, fps);
+  const enter = enterTiming(element, ENTER_SECONDS.punch, fps);
+  const transformFrames = enter.frames;
+  const opacityFrames = enter.channel(ENTER.opacity * 0.75);
+  const blurFrames = enter.channel(ENTER.blur * 0.8);
 
   return (
     <StyleBlock

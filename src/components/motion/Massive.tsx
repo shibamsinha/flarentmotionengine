@@ -17,6 +17,7 @@ import { BLUR_GAIN } from '../../utils/motionBlur';
 import {
   ENTER,
   ENTER_SECONDS,
+  enterTiming,
   StyleBlock,
   combine,
   enterValues,
@@ -34,7 +35,8 @@ export const Massive: React.FC<MotionProps> = ({
   transition,
   canvas,
 }) => {
-  const transformFrames = framesFor(ENTER_SECONDS.massive, fps);
+  const enter = enterTiming(element, ENTER_SECONDS.massive, fps);
+  const transformFrames = enter.frames;
   const blurFrames = framesFor(ENTER.blur, fps);
   const opacityFrames = framesFor(ENTER.opacity * 0.7, fps);
 

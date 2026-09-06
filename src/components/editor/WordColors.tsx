@@ -52,7 +52,7 @@ export const WordColors: React.FC<{
 
   return (
     <div className="field">
-      <label>Word colour · click a word, then pick</label>
+      <label>Word colour</label>
       <div className="chips">
         {words.map((word, index) => {
           const key = colorKey(word);
@@ -116,7 +116,7 @@ export const WordColors: React.FC<{
         <p className="hint">
           {colors && Object.keys(colors).length > 0
             ? `Coloured: ${Object.keys(colors).join(', ')}`
-            : 'Nothing coloured — every word takes the scene’s visual style.'}
+            : 'Click a word, then pick a colour. Nothing coloured — every word takes the scene’s treatment.'}
         </p>
       )}
     </div>

@@ -20,6 +20,7 @@ import type {
   BackgroundName,
   PaletteName,
   TextCase,
+  TextFit,
 } from '../types/scene';
 import { CANVAS } from './timing';
 import type { VideoConfig } from '../types/scene';
@@ -29,7 +30,21 @@ import type { VideoConfig } from '../types/scene';
 export type Theme = {
   background: string;
   ink: string;
+  /**
+   * V8 — the project's accent.
+   *
+   * Carried on the theme because that is already the object every renderer
+   * receives, so an accent needs no new prop threading through five components.
+   * Defaults to the house value, which is what every pre-V8 project gets.
+   */
+  accent: string;
 };
+
+/**
+ * The house accent — the green the reference uses for its lit states.
+ * A project may replace it; nothing may hard-code past it.
+ */
+export const DEFAULT_ACCENT = '#4ADE6A';
 
 /** Field colours. Green and cream were sampled from the reference. */
 export const FIELDS: Record<BackgroundName, string> = {
@@ -107,14 +122,33 @@ export const contrastRatio = (a: string, b: string): number => {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 };
 
-/** Ink that reads on a given field, within a given palette. */
+/**
+ * Ink that reads on a given field, within a given palette.
+ *
+ * V8 adds `inkOverrides`. The distinction between the two override maps is
+ * worth stating: a *field* override changes the colour of the ground and the
+ * ink is then derived to stay readable on it, which is what keeps an imported
+ * script legible when it drops in a mid-tone. An *ink* override is the author
+ * saying the quiet part explicitly — "white text on this blue" — and is
+ * therefore honoured as written, with no contrast substitution.
+ *
+ * That asymmetry is deliberate. Auto-contrast is a safety net for a value
+ * nobody chose; silently overriding a colour someone did choose would make the
+ * palette control untrustworthy, and the author can already see the result.
+ */
 export const themeFor = (
   background: BackgroundName,
   palette: PaletteName = DEFAULT_PALETTE,
   overrides?: FieldOverrides,
+  inkOverrides?: FieldOverrides,
+  accent: string = DEFAULT_ACCENT,
 ): Theme => {
   const definition = paletteFor(palette);
   const field = overrides?.[background] ?? FIELDS[background] ?? FIELDS.green;
+
+  const chosen = inkOverrides?.[background];
+  if (chosen) return { background: field, ink: chosen, accent };
+
   const natural =
     background === 'cream'
       ? definition.creamInk
@@ -125,13 +159,14 @@ export const themeFor = (
   // The house ink always clears this comfortably. The check only matters when a
   // project overrides a field colour — an imported script that puts a mid-tone
   // in `backgroundPalette` must not silently produce unreadable type.
-  if (contrastRatio(field, natural) >= 3) return { background: field, ink: natural };
+  if (contrastRatio(field, natural) >= 3) return { background: field, ink: natural, accent };
 
   const light = '#FFFFFF';
   const dark = '#111111';
   return {
     background: field,
     ink: contrastRatio(field, light) >= contrastRatio(field, dark) ? light : dark,
+    accent,
   };
 };
 
@@ -304,6 +339,49 @@ export const KICKER_MAX = kickerMax(CANVAS);
 /** Visual gap between a line's ink and the next line's ink, in hero `em`. */
 export const LINE_GAP_EM = 0.042;
 
+
+/* -------------------------------------------------------------- typefaces */
+
+/**
+ * V8 — the accent face.
+ *
+ * Flarent is deliberately a one-typeface engine: a single house grotesk is what
+ * gives every reel its family resemblance, and a font picker would quietly turn
+ * a motion-design system into a word processor. But professional kinetic
+ * typography leans on *one* controlled contrast — a serif italic against the
+ * sans — often enough that not having it is a real expressive limit.
+ *
+ * So this is exactly two faces, named semantically, and no more. There is no
+ * arbitrary font loading, no URL, no upload path. The accent stack is built
+ * from faces the renderer's headless Chrome already has, so it needs nothing
+ * shipped and cannot fail to load mid-render.
+ */
+export type FontRole = 'primary' | 'accent';
+
+export const ACCENT_FONT_STACK =
+  `Georgia, 'Times New Roman', 'Liberation Serif', 'DejaVu Serif', Times, serif`;
+
+export type TypeFace = {
+  role: FontRole;
+  family: string;
+  /** The accent face is italic; that slant is half of what makes it read as a counterpoint. */
+  italic: boolean;
+};
+
+export const FACES: Record<FontRole, TypeFace> = {
+  primary: { role: 'primary', family: FONT_STACK, italic: false },
+  accent: { role: 'accent', family: ACCENT_FONT_STACK, italic: true },
+};
+
+export const FONT_ROLES: FontRole[] = ['primary', 'accent'];
+
+export const faceFor = (role: FontRole | undefined): TypeFace =>
+  FACES[role ?? 'primary'] ?? FACES.primary;
+
+/** Extra CSS a face needs beyond family — currently only the slant. */
+export const faceStyles = (face: TypeFace): { fontStyle?: 'italic' } =>
+  face.italic ? { fontStyle: 'italic' } : {};
+
 const fitCache = new Map<string, number>();
 
 /**
@@ -320,27 +398,35 @@ export const fitToWidth = (
   withinWidth: number,
   weight: number = HERO_WEIGHT,
   canvas: VideoConfig = CANVAS,
+  /** V8 — measurement must follow the face the text is actually set in. */
+  face: TypeFace = FACES.primary,
 ): number => {
   if (!text.trim()) return 0;
-  const key = `${text}|${Math.round(withinWidth)}|${weight}|${canvas.width}`;
+  // The face is part of the key: a serif italic measures wider than the grotesk
+  // at the same size, so sharing a cache entry would size accent text wrongly.
+  const key = `${text}|${Math.round(withinWidth)}|${weight}|${canvas.width}|${face.role}`;
   const hit = fitCache.get(key);
   if (hit !== undefined) return hit;
+
+  const extra = faceStyles(face);
 
   // Tracking depends on size and size depends on tracking, so solve twice.
   let size = fitText({
     text,
     withinWidth,
-    fontFamily: FONT_STACK,
+    fontFamily: face.family,
     fontWeight: weight,
     letterSpacing: trackingFor(withinWidth * 0.4, canvas),
+    additionalStyles: extra,
   }).fontSize;
 
   size = fitText({
     text,
     withinWidth,
-    fontFamily: FONT_STACK,
+    fontFamily: face.family,
     fontWeight: weight,
     letterSpacing: trackingFor(size, canvas),
+    additionalStyles: extra,
   }).fontSize;
 
   fitCache.set(key, size);
@@ -354,17 +440,19 @@ export const widthOf = (
   fontSize: number,
   weight: number = HERO_WEIGHT,
   canvas: VideoConfig = CANVAS,
+  face: TypeFace = FACES.primary,
 ): number => {
   if (!text.trim()) return 0;
-  const key = `${text}|${Math.round(fontSize * 100)}|${weight}|${canvas.width}`;
+  const key = `${text}|${Math.round(fontSize * 100)}|${weight}|${canvas.width}|${face.role}`;
   const hit = widthCache.get(key);
   if (hit !== undefined) return hit;
   const { width } = measureText({
     text,
-    fontFamily: FONT_STACK,
+    fontFamily: face.family,
     fontSize,
     fontWeight: weight,
     letterSpacing: trackingFor(fontSize, canvas),
+    additionalStyles: faceStyles(face),
   });
   widthCache.set(key, width);
   return width;
@@ -383,13 +471,30 @@ export const resolveHeroSize = (
   /** V3 sets lighter and heavier faces per role; measurement must follow. */
   weight: number = HERO_WEIGHT,
   canvas: VideoConfig = CANVAS,
+  face: TypeFace = FACES.primary,
+  /**
+   * V8 — an exact width wins over the style's target the same way it does in
+   * `resolveSize`. A single-block scene reaches this function instead of that
+   * one, so without this the scene-level `fit` a caller set was stored, echoed
+   * back, and then silently ignored at render.
+   */
+  fit?: TextFit,
 ): number => {
   const w = canvas.width;
+
+  // Same contract as resolveSize: no bleed, no ceiling, no floor, and `scale`
+  // may shrink fitted text but never grow it past the width it promised.
+  if (fit) {
+    const width = Math.max(0.05, Math.min(1, fit.maxWidth));
+    const exact = fitToWidth(text, width * w, weight, canvas, face);
+    return exact * Math.min(1, Math.max(0, scale || 1));
+  }
+
   const short =
     rule.shortTarget !== undefined &&
     text.replace(/\s+/g, '').length <= (rule.shortMaxChars ?? 5);
   const target = short ? (rule.shortTarget as number) : rule.target;
-  const fitted = fitToWidth(text, target * w, weight, canvas);
+  const fitted = fitToWidth(text, target * w, weight, canvas, face);
   return Math.max(rule.min * w, Math.min(rule.max * w, fitted)) * scale;
 };
 

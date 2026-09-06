@@ -19,9 +19,9 @@ import type { SlideDirection, VideoConfig } from '../../types/scene';
 import { BLUR_GAIN } from '../../utils/motionBlur';
 import {
   ENTER,
+  enterTiming,
   StyleBlock,
   enterValues,
-  framesFor,
   type MotionProps,
 } from './primitives';
 
@@ -57,12 +57,10 @@ export const Slide: React.FC<MotionProps> = ({
   const direction = plan.scene.direction ?? 'bottom';
   const { x, y } = offsetFor(direction, canvas);
   const horizontal = direction === 'left' || direction === 'right';
-  const transformFrames = framesFor(
-    ENTER.transform * (horizontal ? 1.1 : 0.95),
-    fps,
-  );
-  const opacityFrames = framesFor(ENTER.opacity * 0.7, fps);
-  const blurFrames = framesFor(ENTER.blur, fps);
+  const enter = enterTiming(element, ENTER.transform * (horizontal ? 1.1 : 0.95), fps);
+  const transformFrames = enter.frames;
+  const opacityFrames = enter.channel(ENTER.opacity * 0.7);
+  const blurFrames = enter.channel(ENTER.blur);
 
   return (
     <StyleBlock

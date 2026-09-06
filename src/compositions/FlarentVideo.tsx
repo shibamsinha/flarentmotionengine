@@ -27,6 +27,8 @@ export const FlarentVideo: React.FC<FlarentVideoProps> = ({
   scenes,
   palette = DEFAULT_PALETTE,
   fields,
+  ink,
+  accent,
   overlay,
   audio,
 }) => {
@@ -73,6 +75,8 @@ export const FlarentVideo: React.FC<FlarentVideoProps> = ({
                 durationInFrames={entry.durationInFrames}
                 palette={palette}
                 fields={fields}
+                ink={ink}
+                accent={accent}
                 previous={
                   before
                     ? {

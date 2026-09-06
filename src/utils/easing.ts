@@ -156,6 +156,9 @@ export const EXIT_EASE = {
   stack: 'exit',
   slide: 'exitHard',
   rapid: 'exit',
+  /* NONE never animates out on its own, so this is only reached when a scene
+     seam forces an overlap. `exit` is the gentlest curve available. */
+  none: 'exit',
 } as const;
 
 export type EaseName = keyof typeof EASE;

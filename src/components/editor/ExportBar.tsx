@@ -30,11 +30,13 @@ export const ExportBar: React.FC<{
   palette: PaletteName;
   format: CanvasFormat;
   fields: FieldOverrides;
+  ink: FieldOverrides;
+  accent: string | null;
   overlay: OverlayImage | null;
   /** V7 — sent with the render so the MP4 carries the track. */
   audio: ProjectAudio | null;
   saved: boolean;
-}> = ({ scenes, palette, format, fields, overlay, audio, saved }) => {
+}> = ({ scenes, palette, format, fields, ink, accent, overlay, audio, saved }) => {
   const [job, setJob] = useState<JobState>({ phase: 'idle', progress: 0 });
   const pollRef = useRef<number | null>(null);
 
@@ -87,7 +89,7 @@ export const ExportBar: React.FC<{
          * slower, and the file would carry a pointless empty audio stream.
          */
         body: JSON.stringify({
-          scenes, palette, format, fields, overlay,
+          scenes, palette, format, fields, ink, accent, overlay,
           audio: options?.silent ? null : audio,
         }),
       });
@@ -106,7 +108,7 @@ export const ExportBar: React.FC<{
             : 'Export failed',
       });
     }
-  }, [scenes, palette, format, fields, overlay, audio, poll]);
+  }, [scenes, palette, format, fields, ink, accent, overlay, audio, poll]);
 
   const busy = ['starting', 'browser', 'bundling', 'rendering'].includes(job.phase);
   const frames = totalFrames(scenes, CANVAS.fps);

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Flarent Motion Engine — a scene-based kinetic typography engine built on Remotion.",
+  "description": "Flarent Motion Engine \u2014 a scene-based kinetic typography engine built on Remotion.",
   "scripts": {
     "dev": "concurrently -k -n APP,RENDER -c cyan,magenta \"vite\" \"node server/render-server.mjs\"",
     "dev:app": "vite",
@@ -14,10 +14,13 @@
     "typecheck": "tsc --noEmit",
     "baseline": "node scripts/baseline.mjs",
     "baseline:write": "node scripts/baseline.mjs --write",
-    "check": "tsc --noEmit && node scripts/baseline.mjs"
+    "check": "tsc --noEmit && node scripts/baseline.mjs && node --test --test-concurrency=1 --test-timeout=900000 \"mcp/test/*.test.mjs\" \"test/*.test.mjs\"",
+    "mcp": "node mcp/server.mjs",
+    "test": "node --test --test-concurrency=1 --test-timeout=900000 \"mcp/test/*.test.mjs\" \"test/*.test.mjs\""
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@remotion/bundler": "^4.0.514",
     "@remotion/cli": "^4.0.514",
     "@remotion/fonts": "^4.0.514",
@@ -26,7 +29,8 @@
     "@remotion/renderer": "^4.0.514",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "remotion": "^4.0.514"
+    "remotion": "^4.0.514",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",

@@ -11,22 +11,28 @@ export const VideoPreview: React.FC<{
   palette: PaletteName;
   format: CanvasFormat;
   fields: FieldOverrides;
+  ink: FieldOverrides;
+  accent: string | null;
   overlay: OverlayImage | null;
   /** V7 — passed into the composition so the Player drives it from its own clock. */
   audio: ProjectAudio | null;
   playerRef: React.RefObject<PlayerRef | null>;
   onFrame: (frame: number) => void;
   onPlayingChange: (playing: boolean) => void;
-}> = ({ scenes, palette, format, fields, overlay, audio, playerRef, onFrame, onPlayingChange }) => {
+}> = ({ scenes, palette, format, fields, ink, accent, overlay, audio, playerRef, onFrame, onPlayingChange }) => {
   const durationInFrames = totalFrames(scenes, CANVAS.fps);
   const canvas = useMemo(() => canvasFor(format), [format]);
   const inputProps = useMemo(
     () => ({
       scenes, palette, format, fields,
+      // Omitted entirely when unset, so a project that overrides neither sends
+      // exactly the props it always did.
+      ...(Object.keys(ink).length > 0 ? { ink } : {}),
+      ...(accent ? { accent } : {}),
       ...(overlay ? { overlay } : {}),
       ...(audio ? { audio } : {}),
     }),
-    [scenes, palette, format, fields, overlay, audio],
+    [scenes, palette, format, fields, ink, accent, overlay, audio],
   );
 
   useEffect(() => {

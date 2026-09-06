@@ -22,8 +22,11 @@ import type {
   SceneElement,
   SizePreset,
   PositionPreset,
+  BackgroundMotion,
   TextCase,
+  TextFit,
   TextRole,
+  WordStagger,
 } from '../types/scene';
 import type { FieldOverrides } from './typography';
 import type { ProjectAudio } from '../types/audio';
@@ -48,6 +51,8 @@ export type PersistedProject = {
   /** Portrait unless the project chose landscape. */
   format: CanvasFormat;
   fields: FieldOverrides;
+  ink: FieldOverrides;
+  accent: string | null;
   overlay: OverlayImage | null;
   /** V7 — the project's audio track, or null. Optional in stored payloads. */
   audio: ProjectAudio | null;
@@ -55,10 +60,41 @@ export type PersistedProject = {
   selectedId: string | null;
 };
 
-const STYLES: AnimationStyle[] = ['massive', 'punch', 'stack', 'slide', 'rapid'];
+const STYLES: AnimationStyle[] = ['massive', 'punch', 'stack', 'slide', 'rapid', 'none'];
 const BACKGROUNDS: BackgroundName[] = ['green', 'cream', 'black'];
 const ALIGNMENTS: Alignment[] = ['left', 'center', 'right'];
 const CASES: TextCase[] = ['lower', 'upper', 'as-typed'];
+
+/** A width fit, kept only when it is a usable fraction of the frame. */
+const sanitiseFit = (raw: unknown): TextFit | undefined => {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const width = (raw as { maxWidth?: unknown }).maxWidth;
+  if (typeof width !== 'number' || !Number.isFinite(width)) return undefined;
+  if (width <= 0 || width > 1) return undefined;
+  return { mode: 'width', maxWidth: width };
+};
+
+/** Word stagger, kept only when it is a usable whole number of frames. */
+const sanitiseStagger = (raw: unknown): WordStagger | undefined => {
+  if (!isRecord(raw)) return undefined;
+  const frames = num(raw.delayFrames);
+  if (frames === undefined || frames < 0) return undefined;
+  const order = raw.order === 'reverse' ? 'reverse' : undefined;
+  return { type: 'word', delayFrames: Math.round(frames), ...(order ? { order } : {}) };
+};
+
+/** Background alternation, dropped whole if its interval is unusable. */
+const sanitiseBackgroundMotion = (raw: unknown): BackgroundMotion | undefined => {
+  if (!isRecord(raw) || raw.mode !== 'alternate') return undefined;
+  const every = num(raw.everyFrames);
+  if (every === undefined || every < 1) return undefined;
+  const times = num(raw.times);
+  return {
+    mode: 'alternate',
+    everyFrames: Math.round(every),
+    ...(times !== undefined && times >= 0 ? { times: Math.round(times) } : {}),
+  };
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -134,6 +170,16 @@ const sanitiseElement = (raw: unknown, index: number): SceneElement | null => {
   if (scale !== undefined && scale > 0) element.scale = scale;
   const delay = num(raw.delay);
   if (delay !== undefined && delay >= 0) element.delay = delay;
+  const enterFrames = num(raw.enterFrames);
+  if (enterFrames !== undefined && enterFrames >= 1)
+    element.enterFrames = Math.round(enterFrames);
+  const elementFit = sanitiseFit(raw.fit);
+  if (elementFit) element.fit = elementFit;
+  if (STYLES.includes(raw.exit as AnimationStyle)) element.exit = raw.exit as AnimationStyle;
+  const elementStagger = sanitiseStagger(raw.stagger);
+  if (elementStagger) element.stagger = elementStagger;
+  if (raw.fontRole === 'accent' || raw.fontRole === 'primary')
+    element.fontRole = raw.fontRole;
 
   // Manual coordinates only count as a pair — one of the two would place the
   // element somewhere neither the author nor the composition asked for.
@@ -176,6 +222,21 @@ const sanitiseScene = (raw: unknown): Scene | null => {
     scene.emphasis = raw.emphasis.filter((w): w is string => typeof w === 'string');
   if (typeof raw.fontSize === 'number' && Number.isFinite(raw.fontSize))
     scene.fontSize = raw.fontSize;
+  const sceneEnter = num(raw.enterFrames);
+  if (sceneEnter !== undefined && sceneEnter >= 1)
+    scene.enterFrames = Math.round(sceneEnter);
+  const sceneFit = sanitiseFit(raw.fit);
+  if (sceneFit) scene.fit = sceneFit;
+  if (STYLES.includes(raw.exit as AnimationStyle)) scene.exit = raw.exit as AnimationStyle;
+  const sceneExitFrames = num(raw.exitFrames);
+  if (sceneExitFrames !== undefined && sceneExitFrames >= 0)
+    scene.exitFrames = Math.round(sceneExitFrames);
+  const sceneStagger = sanitiseStagger(raw.stagger);
+  if (sceneStagger) scene.stagger = sceneStagger;
+  const sceneBackground = sanitiseBackgroundMotion(raw.backgroundMotion);
+  if (sceneBackground) scene.backgroundMotion = sceneBackground;
+  if (raw.fontRole === 'accent' || raw.fontRole === 'primary')
+    scene.fontRole = raw.fontRole;
   if (typeof raw.direction === 'string')
     scene.direction = raw.direction as Scene['direction'];
   if (typeof raw.flipBackground === 'boolean')
@@ -286,6 +347,25 @@ export const loadProject = (): PersistedProject | null => {
       }
     }
 
+    /* V8 — ink and accent. Absent in every pre-V8 payload, and an empty map is
+       the correct reading of that: no override, so the derived ink stands. */
+    const ink: FieldOverrides = {};
+    if (isRecord(parsed.ink)) {
+      for (const [name, value] of Object.entries(parsed.ink)) {
+        if (
+          BACKGROUNDS.includes(name as BackgroundName) &&
+          typeof value === 'string' &&
+          /^#[0-9a-f]{6}$/i.test(value)
+        ) {
+          ink[name as BackgroundName] = value;
+        }
+      }
+    }
+    const accent =
+      typeof parsed.accent === 'string' && /^#[0-9a-f]{6}$/i.test(parsed.accent)
+        ? parsed.accent
+        : null;
+
     const selectedId =
       typeof parsed.selectedId === 'string' &&
       scenes.some((scene) => scene.id === parsed.selectedId)
@@ -299,6 +379,8 @@ export const loadProject = (): PersistedProject | null => {
       palette: parsed.palette === 'ink' ? 'ink' : 'forest',
       format: parsed.format === 'landscape' ? 'landscape' : 'portrait',
       fields,
+      ink,
+      accent,
       overlay: sanitiseOverlay(parsed.overlay),
       // Absent in every pre-V7 payload; null is the correct reading.
       audio: sanitiseAudio(parsed.audio),

@@ -47,8 +47,22 @@ export const canvasFor = (format: CanvasFormat = DEFAULT_FORMAT): VideoConfig =>
  */
 export const CANVAS: VideoConfig = CANVAS_FORMATS.portrait;
 
-/** Guard rails for the editor UI. */
-export const MIN_SCENE_DURATION = 0.15;
+/**
+ * Guard rails.
+ *
+ * **V8 lowered the floor from 0.15s to a single frame.** The old value was a UI
+ * convenience — it kept a slider from producing scenes too short to read — but
+ * it also made frame-accurate cutting impossible: a two-frame cut is 0.067s, and
+ * anything under five frames was silently clamped up to 0.15s. Hard cutting is a
+ * legitimate and common kinetic-typography technique, so a floor that forbids it
+ * was wrong rather than cautious.
+ *
+ * This is not one of the measured constants. Nothing about the reference video
+ * produced 0.15; it was a bound on a control. The real floor is arithmetic: a
+ * scene cannot be shorter than one frame, because `secondsToFrames` already
+ * rounds up to 1 and a zero-frame sequence cannot mount.
+ */
+export const MIN_SCENE_DURATION = 1 / 30;
 export const MAX_SCENE_DURATION = 12;
 
 export const secondsToFrames = (seconds: number, fps: number): number =>

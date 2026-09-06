@@ -23,7 +23,13 @@ export const Timeline: React.FC<{
   onSeek: (frame: number) => void;
   /** V7 — drawn as its own lane under the scenes, in project time. */
   audio?: ProjectAudio | null;
-}> = ({ scenes, palette, fields, frame, selectedId, onSelect, onSeek, audio }) => {
+  /**
+   * Opens the track's controls. The lane is where you notice the audio, so it
+   * should also be how you reach it — otherwise it is a picture of something
+   * you have to go and find somewhere else.
+   */
+  onOpenAudio?: () => void;
+}> = ({ scenes, palette, fields, frame, selectedId, onSelect, onSeek, audio, onOpenAudio }) => {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
@@ -189,7 +195,20 @@ export const Timeline: React.FC<{
           : null;
 
         return (
-          <div className="timeline-audio">
+          <div
+            className={`timeline-audio${onOpenAudio ? ' is-openable' : ''}`}
+            role={onOpenAudio ? 'button' : undefined}
+            tabIndex={onOpenAudio ? 0 : undefined}
+            title={onOpenAudio ? 'Edit this track' : undefined}
+            onClick={onOpenAudio}
+            onKeyDown={(event) => {
+              if (!onOpenAudio) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onOpenAudio();
+              }
+            }}
+          >
             <span
               className="timeline-audio-clip"
               style={{

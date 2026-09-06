@@ -44,18 +44,20 @@ export const ExtractPanel: React.FC<{
   title: string | null;
   format: CanvasFormat;
   fields: FieldOverrides;
+  ink: FieldOverrides;
+  accent: string | null;
   overlay: OverlayImage | null;
   /** V7 — included so an extracted project carries its audio. */
   audio: ProjectAudio | null;
   onClose: () => void;
-}> = ({ open, scenes, title, format, fields, overlay, audio, onClose }) => {
+}> = ({ open, scenes, title, format, fields, ink, accent, overlay, audio, onClose }) => {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // Serialising the whole reel on every keystroke elsewhere would be wasteful,
   // and the panel is usually shut.
   const json = useMemo(
-    () => (open ? serialiseProject(scenes, title, fields, overlay, format, audio) : ''),
+    () => (open ? serialiseProject(scenes, title, fields, overlay, format, audio, ink, accent) : ''),
     [open, scenes, title, fields, overlay, format, audio],
   );
 

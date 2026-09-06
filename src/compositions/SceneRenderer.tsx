@@ -22,6 +22,10 @@ export const SceneRenderer: React.FC<{
   durationInFrames: number;
   palette?: PaletteName;
   fields?: Partial<Record<BackgroundName, string>>;
+  /** V8 — explicit ink per field, honoured exactly rather than auto-contrasted. */
+  ink?: Partial<Record<BackgroundName, string>>;
+  /** V8 — the project accent. Objects fall back to it when they name no fill. */
+  accent?: string;
   /** The scene before this one, and how long it ran — for the seam. */
   previous?: { scene: Scene; durationInFrames: number };
 }> = ({
@@ -29,6 +33,8 @@ export const SceneRenderer: React.FC<{
   durationInFrames,
   palette = DEFAULT_PALETTE,
   fields,
+  ink,
+  accent,
   previous,
 }) => {
   const frame = useCurrentFrame();
@@ -96,7 +102,7 @@ export const SceneRenderer: React.FC<{
   const background = plan
     ? backgroundForFrame(plan, frame, palette)
     : scene.background;
-  const theme = themeFor(background, palette, fields);
+  const theme = themeFor(background, palette, fields, ink, accent);
 
   /**
    * Objects split around the type by `layer`: negative sits behind it, which is

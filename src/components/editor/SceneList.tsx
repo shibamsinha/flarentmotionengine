@@ -64,7 +64,7 @@ export const SceneList: React.FC<{
           </button>
         ))}
         {scenes.length === 0 ? (
-          <p className="hint" style={{ padding: '8px' }}>
+          <p className="hint is-empty">
             No scenes yet. Add one to start the reel.
           </p>
         ) : null}

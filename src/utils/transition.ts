@@ -89,6 +89,10 @@ const OVERLAP_SECONDS: Record<AnimationStyle, number> = {
   // covers the hand-off out of the run, and without it the next scene opens on
   // a blank frame while its entrance fades up, which flashes.
   rapid: 0.08,
+  /* Zero, and deliberately so. NONE exists to make a hard cut possible; giving
+     it an overlap would put a soft dissolve on exactly the thing that was asked
+     to be abrupt. A held card cuts. */
+  none: 0,
 };
 
 /**
@@ -120,6 +124,10 @@ export const exitSpecFor = (
       return { frames, toY: -canvas.height * 0.08, toScale: 0.94, ease, fadeEase };
     case 'rapid':
       return { frames, toScale: 1.06, ease, fadeEase };
+    case 'none':
+      // Reached only when something else forces an overlap. Fade with no
+      // movement, so a held card never appears to drift on its way out.
+      return { frames, ease, fadeEase };
     case 'punch':
     default:
       // Reads as the word being pushed back out of the frame it punched into.
@@ -180,7 +188,9 @@ export const exitPiecesOf = (plan: ScenePlan): ExitPiece[] =>
       element.style === 'rapid' && element.beats.length > 0
         ? element.beats[element.beats.length - 1].block
         : element.block,
-    style: element.style,
+    // V8.2 — leave in the manner the author asked for, which defaults to the
+    // way the element arrived.
+    style: element.exitStyle,
     motion: element.motion,
     visual: element.visual,
   }));
@@ -220,7 +230,17 @@ export const planTransition = (
 ): SceneTransition => {
   if (!from) return NO_TRANSITION;
 
-  const seconds = OVERLAP_SECONDS[from.style] ?? 0.12;
+  /*
+   * V8.2 — the scene may name its own exit and its own exit length.
+   *
+   * `exit: "none"` resolves to a zero overlap, which is what makes a genuine
+   * hard cut expressible: no outgoing type is drawn at all, rather than a very
+   * short dissolve.
+   */
+  const exitStyle = from.scene.exit ?? from.style;
+  const seconds = from.scene.exitFrames !== undefined
+    ? from.scene.exitFrames / fps
+    : OVERLAP_SECONDS[exitStyle] ?? 0.12;
   if (seconds <= 0) return NO_TRANSITION;
 
   // Never let the seam eat the scene. A third of the incoming scene is the

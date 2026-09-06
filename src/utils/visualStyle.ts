@@ -133,14 +133,14 @@ export type VisualStyleDefinition = {
 export const VISUAL_STYLES: Record<VisualStyleName, VisualStyleDefinition> = {
   solid: {
     id: 'solid',
-    label: 'SOLID',
+    label: 'Solid',
     description: 'One colour, filled. The house treatment.',
     use: 'Statements, setup, explanation.',
     defaults: (theme) => ({ fillColor: theme.ink, opacity: 1 }),
   },
   outline: {
     id: 'outline',
-    label: 'OUTLINE',
+    label: 'Outline',
     description: 'Hollow letters drawn as a stroke. No glow, no shadow.',
     use: 'Contrast, tension, the quieter beat before a loud one.',
     defaults: (theme) => ({
@@ -154,14 +154,14 @@ export const VISUAL_STYLES: Record<VisualStyleName, VisualStyleDefinition> = {
   },
   gradient: {
     id: 'gradient',
-    label: 'GRADIENT',
+    label: 'Gradient',
     description: 'A ramp painted inside the glyphs, not behind them.',
     use: 'The important idea. Energy, climax, the line that matters.',
     defaults: () => ({ gradient: HOUSE_GRADIENT, opacity: 1 }),
   },
   split: {
     id: 'split',
-    label: 'SPLIT',
+    label: 'Split',
     description: 'Two treatments in one piece of type.',
     use: 'Comparisons, two-part ideas, one word doing two jobs.',
     defaults: (theme) => ({

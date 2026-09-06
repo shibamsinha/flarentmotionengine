@@ -13,6 +13,8 @@ import {
   OVERLAY_MIN,
 } from '../motion/OverlayLayer';
 import { resolveImageSrc } from '../motion/SceneImageLayer';
+import { Group } from './Group';
+import { Disclosure } from './Disclosure';
 
 const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
 
@@ -89,37 +91,36 @@ export const OverlayControls: React.FC<{
   const hidden = scenes.filter((scene) => scene.hideOverlay).length;
 
   return (
-    <div className="section">
-      <div className="section-head">
-        Static image
-        <span className="spacer" />
-        {overlay ? (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => onChange(null)}
-            title="Remove the overlay from the whole reel"
-          >
-            Remove
-          </button>
-        ) : null}
-      </div>
-
-      <div className="controls">
+    <Group title="Static image" summary={overlay ? 'on' : undefined}>
         {overlay ? (
           <>
             <div className="overlay-file">
               <span title={overlay.src}>{overlay.src.replace(/^uploads\//, '')}</span>
               <button
                 type="button"
-                className="btn"
+                className="btn tiny"
                 disabled={busy}
                 onClick={() => fileRef.current?.click()}
               >
                 Replace
               </button>
+              <button
+                type="button"
+                className="btn tiny danger"
+                onClick={() => onChange(null)}
+                title="Remove the overlay from the whole reel"
+              >
+                Remove
+              </button>
             </div>
 
+            {/*
+              The overlay has drag handles on the canvas (`OverlayStage`), so
+              five sliders were the second way to do something there is already
+              a better first way to do. They stay for the cases dragging cannot
+              express — matching a mark's position across two reels, say.
+            */}
+            <Disclosure label="Exact placement">
             <div className="field-row">
               <div className="field">
                 <label>X · {Math.round((overlay.x ?? 0) * 100)}%</label>
@@ -198,11 +199,12 @@ export const OverlayControls: React.FC<{
                     className={(overlay.fit ?? 'contain') === fit ? 'is-on' : ''}
                     onClick={() => patch({ fit })}
                   >
-                    {fit}
+                    {fit === 'contain' ? 'Contain' : 'Cover'}
                   </button>
                 ))}
               </div>
             </div>
+            </Disclosure>
 
             <p className="hint">
               Rendered over every scene and outside the scene timeline, so it
@@ -213,20 +215,20 @@ export const OverlayControls: React.FC<{
             </p>
           </>
         ) : (
-          <>
+          <div className="empty-state">
+            <p className="empty-state-text">
+              A logo, watermark or plate that holds still over the whole reel.
+              Independent of scenes — no entrance, no exit, no motion.
+            </p>
             <button
               type="button"
-              className="btn wide"
+              className="btn"
               disabled={busy}
               onClick={() => fileRef.current?.click()}
             >
               {busy ? 'Uploading…' : 'Add a static image'}
             </button>
-            <p className="hint">
-              A logo, watermark or plate that holds still over the whole reel.
-              Independent of scenes — no entrance, no exit, no motion.
-            </p>
-          </>
+          </div>
         )}
 
         {error ? <p className="hint is-error">{error}</p> : null}
@@ -242,7 +244,6 @@ export const OverlayControls: React.FC<{
             event.target.value = '';
           }}
         />
-      </div>
-    </div>
+    </Group>
   );
 };

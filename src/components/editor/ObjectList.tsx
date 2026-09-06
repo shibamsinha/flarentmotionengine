@@ -18,6 +18,7 @@
 
 import React, { useState } from 'react';
 import type { ObjectKind, SceneObject } from '../../types/object';
+import { Group } from './Group';
 import {
   OBJECT_KIND_LABELS,
   flattenObjects,
@@ -54,13 +55,31 @@ export const ObjectList: React.FC<{
   const rows = flattenObjects(objects);
 
   return (
-    <div className="section">
-      <div className="section-head">
-        Objects
-        <span className="spacer" />
-        <span>{rows.length}</span>
-      </div>
+    <Group
+      title="Objects"
+      summary={rows.length > 0 ? String(rows.length) : undefined}
+      defaultOpen={rows.length > 0}
+    >
+      {/*
+        An empty scene used to get two panels about objects it does not have:
+        a list saying "No objects in this scene", and an inspector below it
+        saying "Select an object to edit it". Two ways of saying nothing, and
+        a row of five buttons of which four were disabled. Now there is one
+        state with one thing to do in it.
+      */}
+      {rows.length === 0 && !adding ? (
+        <div className="empty-state">
+          <p className="empty-state-text">
+            Cards, buttons, shapes and icons — the motion-graphics layer that
+            sits over this scene's type.
+          </p>
+          <button type="button" className="btn" onClick={() => setAdding(true)}>
+            Add an object
+          </button>
+        </div>
+      ) : null}
 
+      {rows.length > 0 ? (
       <div className="scene-rows object-rows">
         {rows.map(({ object, depth }) => (
           <button
@@ -77,13 +96,8 @@ export const ObjectList: React.FC<{
             ) : null}
           </button>
         ))}
-        {rows.length === 0 ? (
-          <p className="hint" style={{ padding: '8px' }}>
-            No objects in this scene. Add a card, a button or a shape to start
-            building motion graphics.
-          </p>
-        ) : null}
       </div>
+      ) : null}
 
       {adding ? (
         <div className="object-add">
@@ -105,8 +119,8 @@ export const ObjectList: React.FC<{
             Cancel
           </button>
         </div>
-      ) : (
-        <div className="row-actions">
+      ) : rows.length > 0 ? (
+        <div className="row-actions is-inline">
           <button type="button" className="btn" onClick={() => setAdding(true)}>
             + Add object
           </button>
@@ -147,7 +161,7 @@ export const ObjectList: React.FC<{
             Delete
           </button>
         </div>
-      )}
-    </div>
+      ) : null}
+    </Group>
   );
 };

@@ -22,6 +22,26 @@ export type Project = {
   /** Portrait unless the project chose landscape. */
   format: CanvasFormat;
   fields: FieldOverrides;
+  /**
+   * V8 — explicit ink per field.
+   *
+   * `fields` says what the ground is; this says what the type on it is. Kept as
+   * a separate map keyed the same way rather than folded into `fields` so that
+   * "override the background" and "override the text" stay independent — a
+   * project can do either, both, or neither, and an old project that only set
+   * `backgroundPalette` keeps its derived, auto-contrasting ink exactly as
+   * before.
+   */
+  ink: FieldOverrides;
+  /**
+   * The project's accent colour, or null for the house default.
+   *
+   * One colour, project-level, because that is what an accent *is* — the thing
+   * every scene agrees on. Objects read it as their default fill so a card and
+   * a button in different scenes cannot drift apart, which is precisely the
+   * scattering the brief warns against.
+   */
+  accent: string | null;
   overlay: OverlayImage | null;
   /**
    * V7 — one audio track for the whole video. Project-level by design: it is

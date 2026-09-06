@@ -1,0 +1,140 @@
+/*
+ * Flarent — design tokens.
+ *
+ * The layer `index.css` was missing. Before this file the editor had 13 custom
+ * properties, all of them colour or font-stack, and every dimension in the UI
+ * was a literal: 12 distinct font sizes between 7px and 14px, 14 gap values, 7
+ * border radii, 30-odd paddings. Nothing was wrong with any single number; what
+ * was missing was the relationship between them, and that is what a reader
+ * perceives as "dense" or "calm".
+ *
+ * Loaded *before* `index.css` (see `main.tsx`) so the stylesheet can consume
+ * these. It is a separate file on purpose: `index.css` is one flat 2,500-line
+ * unscoped sheet where a new bare class name has silently redefined an existing
+ * rule before (see SESSION_HANDOFF §6). Custom properties cannot collide with a
+ * selector, so this layer can grow without that risk.
+ *
+ * The colour names are the originals, deliberately — they are referenced a few
+ * hundred times across the sheet, and renaming them would have been a rewrite
+ * pretending to be a retune. The *values* moved; see "Colour" below.
+ */
+
+:root {
+  /* ------------------------------------------------------------------ type
+     Five sizes, replacing twelve. The old set had 9, 9.5, 10 and 10.5px all in
+     play at once, which reads as noise rather than as hierarchy — there is no
+     perceptible difference between 9.5px and 10px, only an inconsistency.
+
+     `--sans` carries everything the user reads as language. `--mono` is kept
+     for what it is actually good at: numbers that must not reflow as they
+     change — timecode, frame counts, durations, hex. It is no longer used for
+     labels, which is what made the editor read as a terminal. */
+  --text-xs: 11px;     /* units, meta, ruler                        */
+  --text-sm: 12px;     /* field labels, buttons, secondary          */
+  --text-base: 13px;   /* control values, body                      */
+  --text-md: 15px;     /* panel titles                              */
+  --text-lg: 19px;     /* sheet headings                            */
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --leading-tight: 1.3;
+  --leading-normal: 1.5;
+
+  /* Optical tracking only. The old 0.14–0.16em on uppercase micro-labels is
+     what turned every caption into texture; sentence case at these sizes wants
+     the opposite correction. */
+  --tracking-tight: -0.006em;
+  --tracking-flat: 0;
+  --tracking-eyebrow: 0.06em;
+
+  /* ----------------------------------------------------------------- space
+     One 4px-based scale. The point is not that unrelated controls get further
+     apart — it is that related ones get *closer*, so grouping becomes visible
+     without drawing a box around it. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Semantic spacing. These are the four that decide whether the panel feels
+     cramped, and naming them keeps the ratio between them intentional. */
+  --gap-inline: var(--space-2);   /* label → its own control           */
+  --gap-control: var(--space-4);  /* control → the next control        */
+  --gap-group: var(--space-5);    /* group  → the next group           */
+  --pad-panel: var(--space-4);    /* panel side padding                */
+
+  /* ---------------------------------------------------------------- radius
+     Two tiers, replacing seven values. Controls and surfaces are different
+     kinds of thing and should not share a corner; everything else was drift. */
+  --radius-sm: 5px;    /* inputs, buttons, chips, segments  */
+  --radius-md: 8px;    /* cards, sheets, wells              */
+  --radius-full: 999px;
+
+  /* Sub-control graphics keep literal 1–3px radii and that is not drift: a
+     2px-tall waveform bar, a 9px field dot, a 3px progress track and a drag
+     handle are drawings, not controls, and rounding them to the control radius
+     would turn them into lozenges. The two tiers above are for things you
+     click and things that contain them. */
+
+  /* -------------------------------------------------------------- preview */
+  /* Type shown as a picture of itself — the face and case samples. Larger than
+     any UI text on purpose: the whole point is to be able to see the shape of
+     the letters. */
+  --preview-glyph: 17px;
+
+  /* --------------------------------------------------------------- control
+     One height for anything that sits in a row with anything else, so a
+     button, a select and a number field line up without per-case padding. */
+  --control-h: 30px;
+  --control-h-sm: 26px;
+  --control-pad-x: 10px;
+
+  /* ---------------------------------------------------------------- colour
+     Same identity, less shouting.
+
+     Two things were making the old palette tiring. Body text sat at #e8ebe8 on
+     #0c0d0c — about 16:1, well past what a 13px UI needs — while labels sat at
+     #545a54, about 3.5:1. So every caption was near-invisible and every value
+     was near-maximum, with nothing in between: no middle register for the UI to
+     speak in. The ceiling comes down, the floor comes up, and the gap between
+     them becomes usable.
+
+     The green does not move. `--accent` is byte-identical to what it was, and
+     is now *rarer*: it was filling every selected segment in eight segmented
+     controls per panel, which spent the brand colour on "this radio button is
+     checked". Selection among equals is now a lifted surface; the accent is
+     kept for the playhead, focus, the primary action and genuine on-states. */
+  --bg: #0c0d0c;              /* app shell (unchanged — also in <meta>) */
+  --bg-sunken: #090a09;       /* canvas pane, wells                     */
+  --bg-raised: #151816;       /* panels, rows                           */
+  --bg-input: #191d1b;        /* fields                                 */
+  --bg-hover: #1f2421;        /* hover                                  */
+  --bg-selected: #272d29;     /* selected among equals                  */
+
+  --line: #212523;            /* hairline — structural separation only  */
+  --line-strong: #333937;     /* field edges, emphasis                  */
+
+  --text: #dfe3e0;            /* values, primary                        */
+  --text-dim: #99a19c;        /* labels — raised from #7d857d           */
+  --text-faint: #6c746f;      /* hints, units — raised from #545a54     */
+
+  --accent: #4ade6a;          /* unchanged                              */
+  --accent-deep: #13581d;     /* unchanged                              */
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --danger: #ff8a7a;
+
+  --cream: #eeeeee;
+
+  /* One focus treatment for the whole editor. A ring rather than a border
+     swap, so focus never changes an element's size or its neighbours' */
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+
+  /* ------------------------------------------------------------------ font */
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial,
+    sans-serif;
+}

@@ -21,7 +21,7 @@ import {
   type VisualStyleConfig,
   type VisualStyleName,
 } from '../../utils/visualStyle';
-import { FONT_STACK, themeFor } from '../../utils/typography';
+import { FONT_STACK, themeFor, type FieldOverrides } from '../../utils/typography';
 import type { BackgroundName } from '../../types/scene';
 
 const PREVIEW_BOX = { width: 92, height: 22, offsetX: 0, offsetY: 0 };
@@ -32,10 +32,24 @@ export const StyleSwatch: React.FC<{
   background: BackgroundName;
   palette: PaletteName;
   config?: VisualStyleConfig;
-}> = ({ style, background, palette, config }) => {
-  const theme = themeFor(background, palette);
+  /** The project's own colours, so the swatch shows what will actually paint. */
+  fields?: FieldOverrides;
+  ink?: FieldOverrides;
+  accent?: string | null;
+  /** The scene's own word, when it has one. */
+  sample?: string;
+}> = ({ style, background, palette, config, fields, ink, accent, sample }) => {
+  const theme = themeFor(background, palette, fields, ink, accent ?? undefined);
   const resolved = resolveStyle({ ...config, type: style }, theme);
   const parts = resolved.type === 'split' ? resolved.parts : [resolved];
+  /*
+   * SPLIT paints two treatments across one piece of type, so the sample has to
+   * be cut in two to show it. Cut near the middle on a character boundary — the
+   * exact split the renderer makes depends on `splitBy` and the real glyph run,
+   * which the swatch has no way to know and does not need to.
+   */
+  const word = (sample && sample.length >= 3 ? sample : 'CUSTOMERS').slice(0, 12);
+  const cut = Math.max(1, Math.round(word.length * 0.45));
 
   return (
     <span
@@ -54,7 +68,7 @@ export const StyleSwatch: React.FC<{
             letterSpacing: '-0.03em',
           }}
         >
-          {parts.length > 1 ? (index === 0 ? 'CUST' : 'OMERS') : 'CUSTOMERS'}
+          {parts.length > 1 ? (index === 0 ? word.slice(0, cut) : word.slice(cut)) : word}
         </span>
       ))}
     </span>
@@ -92,11 +106,18 @@ export const VisualStyleControls: React.FC<{
   config: VisualStyleConfig | undefined;
   background: BackgroundName;
   palette: PaletteName;
+  /** The project's colour overrides, so a swatch cannot show a colour the
+      renderer will not paint. Optional: callers that have none pass none. */
+  fields?: FieldOverrides;
+  ink?: FieldOverrides;
+  accent?: string | null;
+  /** The scene's own word, previewed instead of the house sample. */
+  sample?: string;
   /** Only for elements: what it falls back to. */
   inherited?: VisualStyleName;
   onChange: (style: VisualStyleName | undefined, config: VisualStyleConfig | undefined) => void;
-}> = ({ scope, style, config, background, palette, inherited, onChange }) => {
-  const theme = themeFor(background, palette);
+}> = ({ scope, style, config, background, palette, fields, ink, accent, sample, inherited, onChange }) => {
+  const theme = themeFor(background, palette, fields, ink, accent ?? undefined);
   const active = style ?? inherited ?? 'solid';
   const resolved = resolveStyle({ ...config, type: active }, theme);
 
@@ -113,7 +134,7 @@ export const VisualStyleControls: React.FC<{
 
   return (
     <div className="field">
-      <label>{scope === 'scene' ? 'Visual style' : 'Visual style · this element'}</label>
+      <label>{scope === 'scene' ? 'Treatment' : 'Treatment · this element'}</label>
 
       <div className="style-grid">
         {(scope === 'element'
@@ -133,8 +154,12 @@ export const VisualStyleControls: React.FC<{
                   style={inherited ?? 'solid'}
                   background={background}
                   palette={palette}
+                  fields={fields}
+                  ink={ink}
+                  accent={accent}
+                  sample={sample}
                 />
-                <span className="style-name">AUTO</span>
+                <span className="style-name">Auto</span>
               </button>
             );
           }
@@ -151,6 +176,10 @@ export const VisualStyleControls: React.FC<{
                 background={background}
                 palette={palette}
                 config={name === active ? config : undefined}
+                fields={fields}
+                ink={ink}
+                accent={accent}
+                sample={sample}
               />
               <span className="style-name">{VISUAL_STYLES[name].label}</span>
             </button>
@@ -287,7 +316,7 @@ export const VisualStyleControls: React.FC<{
             ))}
           </div>
           <p className="hint">
-            Two treatments in one piece of type — solid, then the gradient. AUTO
+            Two treatments in one piece of type — solid, then the gradient. Auto
             splits across words, or across the letters of a single word.
           </p>
         </div>

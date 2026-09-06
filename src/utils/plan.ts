@@ -32,6 +32,7 @@ import type {
   PositionPreset,
   Scene,
   SceneElement,
+  WordStagger,
   SizePreset,
   TextCase,
   TextRole,
@@ -75,8 +76,10 @@ import {
   HERO_WEIGHT,
   LINE_GAP_EM,
   DEFAULT_PALETTE,
+  FACES,
   SIZING,
   applyCase,
+  faceFor,
   fitToWidth,
   flipBackground,
   inkBottom,
@@ -91,6 +94,7 @@ import {
   splitWords,
   widthOf,
 } from './typography';
+import type { TypeFace } from './typography';
 
 export type WordRole = 'hero' | 'kicker';
 
@@ -131,6 +135,15 @@ export type PlannedLine = {
 
 export type BlockLayout = {
   lines: PlannedLine[];
+  /**
+   * V8 — the face this block is set in.
+   *
+   * Carried on the block rather than looked up in the renderer because the
+   * planner *measured* with it: if the two ever disagreed, the layout would be
+   * solved for one face and painted in another, and every word position would
+   * be subtly wrong.
+   */
+  face: TypeFace;
   /** CSS `top` for the block so its *ink* lands where the planner put it. */
   top: number;
   /**
@@ -168,6 +181,12 @@ export type PlannedElement = {
   size: SizePreset;
   position: PositionPreset;
   style: AnimationStyle;
+  /**
+   * V8.2 — how this element leaves, resolved from element → scene → its own
+   * entrance style. Kept separate from `style` because arriving and leaving are
+   * genuinely two decisions; before V8.2 they were forced to be the same one.
+   */
+  exitStyle: AnimationStyle;
   align: Alignment;
   block: BlockLayout;
   /** RAPID elements only. */
@@ -176,6 +195,15 @@ export type PlannedElement = {
   from?: { x: number; y: number };
   /** Frames to hold before this element enters. */
   delay: number;
+  /**
+   * V8 — an explicit entrance length in frames, when the author set one.
+   *
+   * Absent means "use the style's own measured length", which is what every
+   * pre-V8 project does and why this is optional rather than always resolved
+   * here: the styles own their timing, and this only overrides it. Already
+   * clamped to the window the element actually has.
+   */
+  enterFrames?: number;
   /** Entrance amplitude. EMPHASIS moves harder, SUPPORT barely moves. */
   motion: number;
   /**
@@ -359,6 +387,7 @@ const layoutLines = (
   sizeOf: (draft: DraftLine, index: number, text: string) => LineSpec,
   alignOf: (draft: DraftLine, index: number, heroLineIndex: number) => Alignment,
   canvas: VideoConfig = CANVAS,
+  face: TypeFace = FACES.primary,
 ): BlockLayout => {
   const heroLineIndex = Math.max(
     0,
@@ -387,7 +416,7 @@ const layoutLines = (
     }
 
     const draft = drafts[lineIndex];
-    const width = widthOf(entry.text, entry.fontSize, entry.weight, canvas);
+    const width = widthOf(entry.text, entry.fontSize, entry.weight, canvas, face);
     const align = alignOf(draft, lineIndex, heroLineIndex);
 
     // Word-level x positions inside the line, so styles can animate words
@@ -395,13 +424,13 @@ const layoutLines = (
     let cursor = 0;
     const words: PlannedWord[] = draft.words.map((raw, indexInLine) => {
       const text = applyCase(raw, textCase);
-      const wordWidth = widthOf(text, entry.fontSize, entry.weight, canvas);
+      const wordWidth = widthOf(text, entry.fontSize, entry.weight, canvas, face);
       const spaceWidth =
         indexInLine === draft.words.length - 1
           ? 0
-          : widthOf(`${text} x`, entry.fontSize, entry.weight, canvas) -
+          : widthOf(`${text} x`, entry.fontSize, entry.weight, canvas, face) -
             wordWidth -
-            widthOf('x', entry.fontSize, entry.weight, canvas);
+            widthOf('x', entry.fontSize, entry.weight, canvas, face);
       const word: PlannedWord = {
         id: `${idPrefix}-l${lineIndex}-w${indexInLine}`,
         text,
@@ -445,6 +474,7 @@ const layoutLines = (
 
   return {
     lines,
+    face,
     top: -inkCentre,
     left: 0,
     height: last.top + last.fontSize,
@@ -472,6 +502,7 @@ const layoutBlock = (
    */
   fit = 1,
   canvas: VideoConfig = CANVAS,
+  face: TypeFace = FACES.primary,
 ): BlockLayout => {
   const maxLineWidth = canvas.width * (SIZING[scene.style]?.target ?? 0.84);
 
@@ -492,7 +523,7 @@ const layoutBlock = (
         kickerMax(canvas) * scale,
         Math.max(kickerMin(canvas) * scale, heroSize * KICKER_RATIO),
       );
-      const ceiling = fitToWidth(text, maxLineWidth, KICKER_WEIGHT, canvas);
+      const ceiling = fitToWidth(text, maxLineWidth, KICKER_WEIGHT, canvas, face);
       return { text, fontSize: Math.min(wanted, ceiling), weight: KICKER_WEIGHT };
     },
     (draft, lineIndex, heroLineIndex) => {
@@ -561,12 +592,40 @@ const assignTiming = (
   fps: number,
   /** Frames the whole element waits before any of it enters. */
   delay = 0,
+  /** V8.2 — an explicit word-to-word spacing, when the author asked for one. */
+  stagger?: WordStagger,
 ): void => {
   const words = block.lines.flatMap((line) => line.words);
   if (words.length === 0) return;
 
   const hold = Math.max(0, Math.min(delay, Math.max(0, durationInFrames - 1)));
   const span = Math.max(1, durationInFrames - hold);
+
+  /**
+   * An explicit stagger wins over every style's own word timing.
+   *
+   * It has to: STACK builds on a fixed measured beat and everything else lands
+   * together, and both are *defaults* — an author who says "two frames apart"
+   * has overridden the default, not asked to be blended with it.
+   *
+   * `order` reverses which end goes first without touching `order`-the-field,
+   * which stays reading order so per-word colour and emphasis keep addressing
+   * the same words. Reversing the *reveal* is a timing choice; reversing the
+   * sentence is not.
+   */
+  if (stagger && stagger.delayFrames > 0) {
+    const count = words.length;
+    const step = Math.max(0, Math.round(stagger.delayFrames));
+    words.forEach((word, index) => {
+      word.order = index;
+      const position = stagger.order === 'reverse' ? count - 1 - index : index;
+      // Clamped so a long sentence with a wide spacing still finishes inside
+      // the scene rather than scheduling words past its final frame.
+      word.start = Math.min(hold + position * step, Math.max(0, durationInFrames - 1));
+      word.duration = durationInFrames - word.start;
+    });
+    return;
+  }
 
   if (style === 'stack') {
     // Each build step gets a fixed short beat (~0.3s in the reference) and the
@@ -697,6 +756,7 @@ const planRapid = (
 function emptyBlock(centreY: number): BlockLayout {
   return {
     lines: [],
+    face: FACES.primary,
     top: centreY,
     left: 0,
     height: 0,
@@ -773,12 +833,17 @@ type ResolvedElement = {
   position: PositionPreset | null;
   anchors: Anchors | null;
   style: AnimationStyle;
+  exitStyle: AnimationStyle;
   align: Alignment | null;
   textCase: TextCase;
   scale: number;
   fontSize: number;
   weight: number;
+  /** V8 — the face this element is set in, already resolved from element/scene. */
+  face: TypeFace;
   delay: number;
+  /** Author-set entrance length in frames, before clamping. Undefined = use the style's. */
+  enterFrames?: number;
   drafts: DraftLine[];
   visual: VisualStyleConfig;
   wordColors?: Record<string, string>;
@@ -823,7 +888,13 @@ const resolveElement = (
   const drafts = elementDrafts(element);
   const weight = ROLE_WEIGHT_FACE[role];
   const scale = (element.scale ?? 1) * (scene.fontSize ?? 1);
-  const fontSize = resolveSize(longestLine(drafts, textCase), size, scale, weight, canvas);
+  // The face and the fit are resolved before sizing, because both change what
+  // "this text at this size" measures to.
+  const face = faceFor(element.fontRole ?? scene.fontRole);
+  const fit = element.fit ?? scene.fit;
+  const fontSize = resolveSize(
+    longestLine(drafts, textCase), size, scale, weight, canvas, face, fit,
+  );
 
   return {
     source: element,
@@ -835,12 +906,18 @@ const resolveElement = (
     position: element.position ?? null,
     anchors: element.position ? anchorsFor(element.position) : null,
     style: element.animation ?? scene.style,
+    // Most specific wins, and the final fallback is the element's own entrance
+    // — which is exactly what the engine did before this field existed.
+    exitStyle: element.exit ?? scene.exit ?? element.animation ?? scene.style,
     align: element.align ?? null,
     textCase,
     scale,
     fontSize,
     weight,
+    face,
     delay: element.delay ?? 0,
+    // Element beats scene; both may be absent, which leaves the style's own.
+    enterFrames: element.enterFrames ?? scene.enterFrames,
     drafts,
     visual: mergeVisual(scene, element),
     wordColors: mergeWordColors(scene, element),
@@ -912,6 +989,7 @@ const layoutElementBlock = (
     (_draft, _index, text) => ({ text, fontSize, weight: element.weight }),
     () => align,
     canvas,
+    element.face,
   );
 
 /**
@@ -1012,6 +1090,29 @@ const planRapidElement = (
       },
     ];
   });
+};
+
+/**
+ * An explicit entrance length, clamped to the room the element actually has.
+ *
+ * Precedence, and it is worth stating because three things can set it: the
+ * element's own `enterFrames` wins, then the scene's, then nothing — which
+ * leaves the field absent and lets the style use its own measured length. That
+ * order is the same "most specific wins" rule the rest of the model uses for
+ * size, animation and case.
+ *
+ * The clamp is the important part. An entrance longer than the window would
+ * leave the type still arriving when the scene cuts, so it is shortened to fit
+ * rather than honoured and overrun. One frame is the floor: zero would be a
+ * hold, and a hold is `animation: "none"` rather than a zero-length PUNCH.
+ */
+const resolveEnterFrames = (
+  requested: number | undefined,
+  windowFrames: number,
+): number | undefined => {
+  if (requested === undefined || !Number.isFinite(requested)) return undefined;
+  const room = Math.max(1, Math.floor(windowFrames));
+  return Math.max(1, Math.min(room, Math.round(requested)));
 };
 
 const planComposed = (
@@ -1135,7 +1236,10 @@ const planComposed = (
 
     const delayFrames = Math.max(0, Math.round(element.delay * fps));
     if (element.style !== 'rapid') {
-      assignTiming(block, element.style, durationInFrames, fps, delayFrames);
+      assignTiming(
+        block, element.style, durationInFrames, fps, delayFrames,
+        element.source.stagger ?? scene.stagger,
+      );
     }
 
     // An entrance origin, when the element asked to come in from offscreen.
@@ -1156,11 +1260,14 @@ const planComposed = (
       size: element.size,
       position: element.position ?? 'center',
       style: element.style,
+      exitStyle: element.exitStyle,
       align: aligns[index],
       block,
       beats,
       from,
       delay: delayFrames,
+      // `element.enterFrames` already carries the scene fallback.
+      enterFrames: resolveEnterFrames(element.enterFrames, durationInFrames - delayFrames),
       motion: ROLE_MOTION[element.role],
       visual: element.visual,
       wordColors: element.wordColors,
@@ -1236,10 +1343,12 @@ const planSingle = (
         size: 'large',
         position: 'center',
         style: scene.style,
+        exitStyle: scene.exit ?? scene.style,
         align: scene.alignment,
         block,
         beats,
         delay: 0,
+        enterFrames: resolveEnterFrames(scene.enterFrames, durationInFrames),
         motion: 1,
         visual: mergeVisual(scene),
         // The V2 path has no elements, so scene-level colours are all there is.
@@ -1279,7 +1388,18 @@ const planSingle = (
   const heroDraft = drafts.find((line) => line.role === 'hero') ?? drafts[0];
   const heroText = applyCase(heroDraft.words.join(' '), textCase);
   const rule = SIZING[scene.style] ?? SIZING.punch;
-  const heroSize = resolveHeroSize(heroText, rule, scene.fontSize ?? 1, HERO_WEIGHT, canvas);
+  // The face stays primary: `layoutBlockInBand` lays this path out in the
+  // primary face, and a size solved for one face and painted in another is the
+  // one thing the block layout must never do.
+  const heroSize = resolveHeroSize(
+    heroText,
+    rule,
+    scene.fontSize ?? 1,
+    HERO_WEIGHT,
+    canvas,
+    FACES.primary,
+    scene.fit,
+  );
 
   const block = layoutBlockInBand(
     scene.id,
@@ -1291,7 +1411,7 @@ const planSingle = (
     bandHeight,
     canvas,
   );
-  assignTiming(block, scene.style, durationInFrames, fps);
+  assignTiming(block, scene.style, durationInFrames, fps, 0, scene.stagger);
 
   return single(
     block,

@@ -6,3 +6,8 @@ public/uploads/*
 !public/uploads/.gitkeep
 .DS_Store
 *.log
+
+# MCP local state: stored projects, the compiled-engine bundle, the audio
+# analysis cache and idempotency records. All of it is derived or personal —
+# projects are a user's own work, and the caches rebuild themselves.
+.flarent/

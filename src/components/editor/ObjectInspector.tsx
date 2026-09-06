@@ -12,9 +12,12 @@
  * `objectMotion.ts` holds the actual recipes. Position and size are set by
  * dragging on the canvas, which is what a canvas is for.
  *
- * Timing is in seconds because the brief is explicit that nobody should have to
- * think in frames, and because a user who does think in frames is a user the
- * abstraction has already failed.
+ * Timing is *stored* in seconds — that is the schema and it has not moved. The
+ * UI shows the frame equivalent beside it, because an editor cutting to a beat
+ * is counting frames and should not have to convert. An earlier version of this
+ * comment argued that anyone thinking in frames was a failure of the
+ * abstraction; the brief since reversed that, and it was wrong anyway: the two
+ * units are for different questions, and showing both costs nothing.
  */
 
 import React from 'react';
@@ -40,6 +43,9 @@ import {
 } from '../../utils/objectMotion';
 import { ICON_PATHS } from '../motion/objects/icons';
 import { OBJECT_KIND_LABELS } from '../../data/objects';
+import { CANVAS } from '../../utils/timing';
+import { Group } from './Group';
+import { Disclosure } from './Disclosure';
 
 type Patch = (patch: Partial<SceneObject>) => void;
 
@@ -119,6 +125,12 @@ const Colour: React.FC<{ value: string | undefined; fallback: string; onChange: 
 const opts = <T extends string>(values: readonly T[]): { value: T; label: string }[] =>
   values.map((v) => ({ value: v, label: v.replace(/-/g, ' ') }));
 
+/** " · delay 6f" for a value that is set, nothing for one that is not. */
+const inFrames = (seconds: number | undefined, name: string): string =>
+  seconds === undefined || seconds <= 0
+    ? ''
+    : ` · ${name} ${Math.round(seconds * CANVAS.fps)}f`;
+
 /* ------------------------------------------------------------------ label */
 
 const LabelFields: React.FC<{
@@ -164,10 +176,13 @@ const SurfaceFields: React.FC<{
       <Row label="Fill">
         <Colour value={surface?.fill} fallback={fillFallback} onChange={(fill) => set({ fill })} />
       </Row>
-      <div className="field-row">
-        <Row label="Corner radius">
-          <Num value={surface?.radius} step={0.02} min={0} max={0.5} onChange={(radius) => set({ radius })} placeholder="0" />
-        </Row>
+      <Row label="Corner radius">
+        <Num value={surface?.radius} step={0.02} min={0} max={0.5} onChange={(radius) => set({ radius })} placeholder="0" />
+      </Row>
+
+      {/* Depth. Two of these four are usually zero, and none of them is the
+          question you opened the panel to answer. */}
+      <Disclosure label="Shadow and glow">
         <Row label="Shadow">
           <Pick
             value={surface?.shadow}
@@ -176,20 +191,20 @@ const SurfaceFields: React.FC<{
             allowNone="none"
           />
         </Row>
-      </div>
-      <div className="field-row">
-        <Row label="Glow">
-          <Pick
-            value={surface?.glow}
-            options={opts(['none', 'low', 'medium', 'high'] as const)}
-            onChange={(glow) => set({ glow })}
-            allowNone="none"
-          />
-        </Row>
-        <Row label="Glow colour">
-          <Colour value={surface?.glowColor} fallback="#4ade6a" onChange={(glowColor) => set({ glowColor })} />
-        </Row>
-      </div>
+        <div className="field-row">
+          <Row label="Glow">
+            <Pick
+              value={surface?.glow}
+              options={opts(['none', 'low', 'medium', 'high'] as const)}
+              onChange={(glow) => set({ glow })}
+              allowNone="none"
+            />
+          </Row>
+          <Row label="Glow colour">
+            <Colour value={surface?.glowColor} fallback="#4ade6a" onChange={(glowColor) => set({ glowColor })} />
+          </Row>
+        </div>
+      </Disclosure>
     </>
   );
 };
@@ -202,13 +217,14 @@ const MotionFields: React.FC<{ object: SceneObject; patch: Patch }> = ({ object,
 
   const enterRecipe = motion.enter && motion.enter !== 'none' ? ENTER[motion.enter] : null;
   const exitRecipe = motion.exit && motion.exit !== 'none' ? EXIT[motion.exit] : null;
+  const emphasisRecipe =
+    motion.emphasis && motion.emphasis !== 'none' ? EMPHASIS[motion.emphasis] : null;
   const directional = Boolean(enterRecipe?.directional || exitRecipe?.directional);
 
   return (
     <>
-      <div className="section-head">Motion</div>
-      <div className="controls">
-        <Row label="Enter">
+      <Group title="Motion" summary={enterRecipe ? enterRecipe.label : 'None'}>
+        <Row label="Entrance">
           <Pick
             value={motion.enter}
             options={(Object.keys(ENTER) as Exclude<EnterMotion, 'none'>[]).map((k) => ({
@@ -220,39 +236,7 @@ const MotionFields: React.FC<{ object: SceneObject; patch: Patch }> = ({ object,
         </Row>
         {enterRecipe ? <p className="hint">{enterRecipe.description}</p> : null}
 
-        <div className="field-row">
-          <Row label="Speed">
-            <Pick
-              value={motion.speed}
-              options={opts(['slow', 'medium', 'fast'] as const)}
-              onChange={(speed) => set({ speed: speed as MotionSpeed })}
-              allowNone="medium"
-            />
-          </Row>
-          <Row label="Distance">
-            <Pick
-              value={motion.distance}
-              options={opts(['small', 'medium', 'large'] as const)}
-              onChange={(distance) => set({ distance: distance as MotionDistance })}
-              allowNone="medium"
-            />
-          </Row>
-        </div>
-
-        {/* Direction is only offered when the chosen preset actually travels —
-            asking "from which edge?" about a fade is a question with no answer. */}
-        {directional ? (
-          <Row label="From">
-            <Pick
-              value={motion.from}
-              options={opts(['left', 'right', 'top', 'bottom'] as const)}
-              onChange={(from) => set({ from: from as MotionDirection })}
-              allowNone="bottom"
-            />
-          </Row>
-        ) : null}
-
-        <Row label="While on screen">
+        <Row label="Emphasis">
           <Pick
             value={motion.emphasis}
             options={(Object.keys(EMPHASIS) as Exclude<EmphasisMotion, 'none'>[]).map((k) => ({
@@ -262,6 +246,9 @@ const MotionFields: React.FC<{ object: SceneObject; patch: Patch }> = ({ object,
             allowNone="Nothing"
           />
         </Row>
+        {/* Each recipe already carries a sentence saying what it does; only the
+            entrance was showing its. The other two are no less worth reading. */}
+        {emphasisRecipe ? <p className="hint">{emphasisRecipe.description}</p> : null}
 
         <Row label="Exit">
           <Pick
@@ -273,21 +260,80 @@ const MotionFields: React.FC<{ object: SceneObject; patch: Patch }> = ({ object,
             allowNone="None"
           />
         </Row>
+        {exitRecipe ? <p className="hint">{exitRecipe.description}</p> : null}
 
-        <div className="field-row">
-          <Row label="Delay (s)">
-            <Num value={motion.delay} step={0.05} min={0} onChange={(delay) => set({ delay })} placeholder="0" />
+        {/* Direction is only offered when the chosen preset actually travels —
+            asking "from which edge?" about a fade is a question with no answer. */}
+        {directional ? (
+          <Row label="Comes from">
+            <Pick
+              value={motion.from}
+              options={opts(['left', 'right', 'top', 'bottom'] as const)}
+              onChange={(from) => set({ from: from as MotionDirection })}
+              allowNone="bottom"
+            />
           </Row>
-          <Row label="Start (s)">
-            <Num value={object.start} step={0.05} min={0} onChange={(start) => patch({ start })} placeholder="0" />
-          </Row>
-          <Row label="Duration (s)">
-            <Num value={object.duration} step={0.1} min={0} onChange={(duration) => patch({ duration })} placeholder="rest of scene" />
-          </Row>
-        </div>
-      </div>
+        ) : null}
+        {/* Speed, distance and the three clocks are refinements of the three
+            choices above rather than choices in their own right — you reach
+            for them once the entrance is already the one you want. */}
+        <Disclosure label="More motion">
+          <div className="field-row">
+            <Row label="Speed">
+              <Pick
+                value={motion.speed}
+                options={opts(['slow', 'medium', 'fast'] as const)}
+                onChange={(speed) => set({ speed: speed as MotionSpeed })}
+                allowNone="medium"
+              />
+            </Row>
+            <Row label="Distance">
+              <Pick
+                value={motion.distance}
+                options={opts(['small', 'medium', 'large'] as const)}
+                onChange={(distance) => set({ distance: distance as MotionDistance })}
+                allowNone="medium"
+              />
+            </Row>
+          </div>
+
+          <div className="field-row">
+            <Row label="Delay">
+              <Num value={motion.delay} step={0.05} min={0} onChange={(delay) => set({ delay })} placeholder="0" />
+            </Row>
+            <Row label="Start">
+              <Num value={object.start} step={0.05} min={0} onChange={(start) => patch({ start })} placeholder="0" />
+            </Row>
+            <Row label="Duration">
+              <Num value={object.duration} step={0.1} min={0} onChange={(duration) => patch({ duration })} placeholder="rest of scene" />
+            </Row>
+          </div>
+          {/*
+            Objects store their clocks in seconds — that is the schema and it is
+            not moving — but an editor cutting to a beat is counting frames. Both
+            are shown so neither has to be worked out.
+          */}
+          <p className="hint">
+            Seconds{inFrames(motion.delay, 'delay')}{inFrames(object.start, 'start')}
+            {inFrames(object.duration, 'duration')}. Delay is measured from the
+            object's start; start is measured from the scene's.
+          </p>
+        </Disclosure>
+      </Group>
     </>
   );
+};
+
+/**
+ * What each surface-bearing kind falls back to when no fill is set. These are
+ * the same three values the per-kind blocks used to pass inline; `'ink'` means
+ * "the field's own ink", which is resolved at render because it depends on the
+ * scene's background rather than on the object.
+ */
+const SURFACE_FALLBACK: Partial<Record<SceneObject['type'], string>> = {
+  shape: 'ink',
+  card: '#16181b',
+  button: '#f2f4f2',
 };
 
 /* ------------------------------------------------------------- inspector */
@@ -299,27 +345,18 @@ export const ObjectInspector: React.FC<{
   /** Every id in the scene, so a cursor can be pointed at one. */
   targets: { id: string; label: string }[];
 }> = ({ object, ink, onChange, targets }) => {
-  if (!object) {
-    return (
-      <div className="section">
-        <div className="section-head">Object</div>
-        <p className="hint" style={{ padding: '8px' }}>
-          Select an object to edit it, or drag it on the canvas.
-        </p>
-      </div>
-    );
-  }
+  /*
+   * Nothing selected, nothing to inspect. This used to render a panel whose
+   * entire content was an apology for being empty, directly under a list that
+   * had just said the same thing. The list is the empty state now.
+   */
+  if (!object) return null;
 
   const patch: Patch = onChange;
 
   return (
-    <div className="section">
-      <div className="section-head">
-        {OBJECT_KIND_LABELS[object.type]}
-        <span className="spacer" />
-      </div>
-
-      <div className="controls">
+    <>
+      <Group title={OBJECT_KIND_LABELS[object.type]}>
         {/* ------------------------------------------------ per-kind content */}
         {object.type === 'shape' ? (
           <>
@@ -330,11 +367,6 @@ export const ObjectInspector: React.FC<{
                 onChange={(shape) => patch({ shape: shape as ShapeKind } as Partial<SceneObject>)}
               />
             </Row>
-            <SurfaceFields
-              surface={(object as ShapeObject).surface}
-              fillFallback={ink}
-              onChange={(surface) => patch({ surface } as Partial<SceneObject>)}
-            />
           </>
         ) : null}
 
@@ -403,11 +435,6 @@ export const ObjectInspector: React.FC<{
               fallbackColor={ink}
               onChange={(body) => patch({ body } as Partial<SceneObject>)}
             />
-            <SurfaceFields
-              surface={(object as CardObject).surface}
-              fillFallback="#16181b"
-              onChange={(surface) => patch({ surface } as Partial<SceneObject>)}
-            />
           </>
         ) : null}
 
@@ -427,11 +454,6 @@ export const ObjectInspector: React.FC<{
                 allowNone="None"
               />
             </Row>
-            <SurfaceFields
-              surface={(object as ButtonObject).surface}
-              fillFallback="#f2f4f2"
-              onChange={(surface) => patch({ surface } as Partial<SceneObject>)}
-            />
             <p className="hint">
               A cursor click can put this button into its success state — add a
               cursor and point one of its stops at this object.
@@ -468,42 +490,74 @@ export const ObjectInspector: React.FC<{
           </>
         ) : null}
 
-        {/* -------------------------------------------------- shared: place */}
-        <div className="section-head" style={{ marginTop: 6 }}>Position</div>
-        <div className="field-row">
-          <Row label="X"><Num value={object.x} onChange={(x) => patch({ x: x ?? 0 })} /></Row>
-          <Row label="Y"><Num value={object.y} onChange={(y) => patch({ y: y ?? 0 })} /></Row>
+      </Group>
+
+      {/*
+        The paint. Split out of the per-kind content because "what is this
+        thing" and "what colour is it" are different questions — and because
+        the three kinds that have a surface were each carrying an identical
+        five-control block buried at the bottom of their own section.
+      */}
+      {SURFACE_FALLBACK[object.type] !== undefined ? (
+        <Group title="Look">
+          <SurfaceFields
+            surface={(object as ShapeObject | CardObject | ButtonObject).surface}
+            fillFallback={SURFACE_FALLBACK[object.type] === 'ink' ? ink : (SURFACE_FALLBACK[object.type] as string)}
+            onChange={(surface) => patch({ surface } as Partial<SceneObject>)}
+          />
+        </Group>
+      ) : null}
+
+      {/* -------------------------------------------------- shared: place */}
+      <Group title="Position">
+        {/* Alignment first, as one click each. Non-designers should not have to
+            do arithmetic to centre something, and they should not have to read
+            past six number fields to find out they don't need to. */}
+        <div className="field">
+          <label>Snap to</label>
+          <div className="chips">
+            <button type="button" className="btn tiny"
+              onClick={() => patch({ x: (1 - object.width) / 2 })}>Centre X</button>
+            <button type="button" className="btn tiny"
+              onClick={() => patch({ y: (1 - object.height) / 2 })}>Centre Y</button>
+            <button type="button" className="btn tiny" onClick={() => patch({ x: 0.08 })}>Left</button>
+            <button type="button" className="btn tiny"
+              onClick={() => patch({ x: 1 - 0.08 - object.width })}>Right</button>
+            <button type="button" className="btn tiny" onClick={() => patch({ y: 0.08 })}>Top</button>
+            <button type="button" className="btn tiny"
+              onClick={() => patch({ y: 1 - 0.08 - object.height })}>Bottom</button>
+          </div>
+          <p className="hint">Or drag the object on the canvas.</p>
         </div>
-        <div className="field-row">
-          <Row label="Width"><Num value={object.width} onChange={(width) => patch({ width: width ?? 0.1 })} /></Row>
-          <Row label="Height"><Num value={object.height} onChange={(height) => patch({ height: height ?? 0.1 })} /></Row>
-        </div>
-        <div className="field-row">
-          <Row label="Rotation (°)">
-            <Num value={object.rotation} step={1} onChange={(rotation) => patch({ rotation })} placeholder="0" />
-          </Row>
-          <Row label="Opacity">
-            <Num value={object.opacity} step={0.05} min={0} max={1} onChange={(opacity) => patch({ opacity })} placeholder="1" />
-          </Row>
-        </div>
-        {/* Alignment, as one click each. Non-designers should not have to do
-            arithmetic to centre something. */}
-        <div className="chips">
-          <button type="button" className="btn tiny"
-            onClick={() => patch({ x: (1 - object.width) / 2 })}>Centre X</button>
-          <button type="button" className="btn tiny"
-            onClick={() => patch({ y: (1 - object.height) / 2 })}>Centre Y</button>
-          <button type="button" className="btn tiny" onClick={() => patch({ x: 0.08 })}>Left</button>
-          <button type="button" className="btn tiny"
-            onClick={() => patch({ x: 1 - 0.08 - object.width })}>Right</button>
-          <button type="button" className="btn tiny" onClick={() => patch({ y: 0.08 })}>Top</button>
-          <button type="button" className="btn tiny"
-            onClick={() => patch({ y: 1 - 0.08 - object.height })}>Bottom</button>
-        </div>
-      </div>
+
+        {/*
+          The canvas has handles and the row above has one-click alignment, so
+          the numbers are for the cases those two cannot express — matching two
+          objects exactly, or nudging by a hundredth. They stay reachable and
+          stop being the first thing in the group.
+        */}
+        <Disclosure label="Exact position">
+          <div className="field-row">
+            <Row label="X"><Num value={object.x} onChange={(x) => patch({ x: x ?? 0 })} /></Row>
+            <Row label="Y"><Num value={object.y} onChange={(y) => patch({ y: y ?? 0 })} /></Row>
+          </div>
+          <div className="field-row">
+            <Row label="Width"><Num value={object.width} onChange={(width) => patch({ width: width ?? 0.1 })} /></Row>
+            <Row label="Height"><Num value={object.height} onChange={(height) => patch({ height: height ?? 0.1 })} /></Row>
+          </div>
+          <div className="field-row">
+            <Row label="Rotation (°)">
+              <Num value={object.rotation} step={1} onChange={(rotation) => patch({ rotation })} placeholder="0" />
+            </Row>
+            <Row label="Opacity">
+              <Num value={object.opacity} step={0.05} min={0} max={1} onChange={(opacity) => patch({ opacity })} placeholder="1" />
+            </Row>
+          </div>
+        </Disclosure>
+      </Group>
 
       {object.type !== 'cursor' ? <MotionFields object={object} patch={patch} /> : null}
-    </div>
+    </>
   );
 };
 
@@ -529,25 +583,25 @@ const CursorFields: React.FC<{
       </p>
       {object.stops.map((stop, i) => (
         <div key={i} className="cursor-stop">
-          <div className="section-head">Stop {i + 1}</div>
+          {/*
+            Where it goes and what it does on arrival — the two things a stop is
+            about. How it travels there, and how long it takes, are refinements
+            of that, and eight peer fields per stop across four stops was the
+            densest thing left in the editor.
+          */}
+          <div className="section-head">
+            Stop {i + 1}
+            <span className="spacer" />
+            <span>{stop.action && stop.action !== 'none' ? stop.action : 'move'}</span>
+          </div>
           <div className="field-row">
             <Row label="X"><Num value={stop.x} onChange={(x) => setStop(i, { x: x ?? 0.5 })} /></Row>
             <Row label="Y"><Num value={stop.y} onChange={(y) => setStop(i, { y: y ?? 0.5 })} /></Row>
-            <Row label="At (s)"><Num value={stop.at} step={0.1} onChange={(at) => setStop(i, { at: at ?? 0 })} /></Row>
           </div>
-          <div className="field-row">
-            <Row label="Travel (s)">
-              <Num value={stop.travel} step={0.1} onChange={(travel) => setStop(i, { travel })} placeholder="0.6" />
-            </Row>
-            <Row label="Path">
-              <Pick value={stop.path} options={opts(['straight', 'arc', 'curve'] as const)}
-                    onChange={(path) => setStop(i, { path })} allowNone="straight" />
-            </Row>
-            <Row label="Action">
-              <Pick value={stop.action} options={opts(['none', 'click', 'press', 'hover'] as const)}
-                    onChange={(action) => setStop(i, { action })} allowNone="none" />
-            </Row>
-          </div>
+          <Row label="Action">
+            <Pick value={stop.action} options={opts(['none', 'click', 'press', 'hover'] as const)}
+                  onChange={(action) => setStop(i, { action })} allowNone="none" />
+          </Row>
           {stop.action && stop.action !== 'none' ? (
             <div className="field-row">
               <Row label="Acts on">
@@ -568,6 +622,23 @@ const CursorFields: React.FC<{
               </Row>
             </div>
           ) : null}
+          <Disclosure label="Travel">
+            <div className="field-row">
+              <Row label="Arrives at">
+                <Num value={stop.at} step={0.1} onChange={(at) => setStop(i, { at: at ?? 0 })} />
+              </Row>
+              <Row label="Takes">
+                <Num value={stop.travel} step={0.1} onChange={(travel) => setStop(i, { travel })} placeholder="0.6" />
+              </Row>
+            </div>
+            <Row label="Path">
+              <Pick value={stop.path} options={opts(['straight', 'arc', 'curve'] as const)}
+                    onChange={(path) => setStop(i, { path })} allowNone="straight" />
+            </Row>
+            <p className="hint">
+              Both in seconds{inFrames(stop.at, 'arrives')}{inFrames(stop.travel, 'takes')}.
+            </p>
+          </Disclosure>
         </div>
       ))}
       <button

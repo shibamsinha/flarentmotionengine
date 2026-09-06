@@ -25,19 +25,21 @@ import type {
   SizePreset,
   TextRole,
   VideoConfig,
+  TextFit,
 } from '../types/scene';
 import { CANVAS } from './timing';
-import { fitToWidth, sideMargin } from './typography';
+import { FACES, fitToWidth, sideMargin } from './typography';
+import type { TypeFace } from './typography';
 
 /* -------------------------------------------------------------------- roles */
 
 export const TEXT_ROLES: TextRole[] = ['primary', 'secondary', 'emphasis', 'support'];
 
 export const ROLE_LABEL: Record<TextRole, string> = {
-  primary: 'PRIMARY',
-  secondary: 'SECONDARY',
-  emphasis: 'EMPHASIS',
-  support: 'SUPPORT',
+  primary: 'Primary',
+  secondary: 'Secondary',
+  emphasis: 'Emphasis',
+  support: 'Support',
 };
 
 /**
@@ -139,12 +141,12 @@ export const SIZE_PRESETS: SizePreset[] = [
 ];
 
 export const SIZE_LABEL: Record<SizePreset, string> = {
-  xs: 'XS',
-  small: 'SMALL',
-  medium: 'MEDIUM',
-  large: 'LARGE',
-  huge: 'HUGE',
-  oversized: 'OVERSIZED',
+  xs: 'Extra small',
+  small: 'Small',
+  medium: 'Medium',
+  large: 'Large',
+  huge: 'Huge',
+  oversized: 'Oversized',
 };
 
 export type SizeDefinition = {
@@ -256,12 +258,35 @@ export const resolveSize = (
   scale = 1,
   weight = 800,
   canvas: VideoConfig = CANVAS,
+  face: TypeFace = FACES.primary,
+  /** V8 — when present, an exact width wins over the preset entirely. */
+  fit?: TextFit,
 ): number => {
   const rule = sizeRule(size);
   const chars = text.replace(/\s+/g, '').length;
   if (chars === 0) return 0;
   const W = canvas.width;
-  const fitted = fitToWidth(text, targetWidth(size, chars) * W, weight, canvas);
+
+  /**
+   * Fit-to-width short-circuits the whole preset machinery, and it has to.
+   *
+   * A preset resolves a *target* and then permits overhang past it — that bleed
+   * curve is what makes display type read as a crop rather than as a big word,
+   * and it is exactly what someone asking for "88% and no clipping" does not
+   * want. So none of it applies: no bleed, no ceiling, no floor.
+   *
+   * `scale` may still shrink fitted text (a caller can ask for 80% of the fit)
+   * but never grow it, because growing it would break the one guarantee this
+   * mode makes. Clamped rather than ignored, so the field keeps working the way
+   * it does everywhere else and simply cannot violate the promise.
+   */
+  if (fit) {
+    const width = Math.max(0.05, Math.min(1, fit.maxWidth));
+    const exact = fitToWidth(text, width * W, weight, canvas, face);
+    return exact * Math.min(1, Math.max(0, scale || 1));
+  }
+
+  const fitted = fitToWidth(text, targetWidth(size, chars) * W, weight, canvas, face);
 
   /**
    * The floor exists so pathological input never disappears — it must never be
@@ -274,7 +299,7 @@ export const resolveSize = (
    * inverting the rule the bleed curve exists to express. Bleeding is the
    * target's decision; the floor only stops text vanishing.
    */
-  const fills = fitToWidth(text, W, weight, canvas);
+  const fills = fitToWidth(text, W, weight, canvas, face);
   const floor = Math.min(rule.min * W, fills);
 
   return Math.max(floor, Math.min(rule.max * W, fitted)) * scale;
@@ -306,8 +331,10 @@ export const POSITION_PRESETS: PositionPreset[] = [
   'offscreen-bottom',
 ];
 
-export const POSITION_LABEL = (position: PositionPreset): string =>
-  position.replace(/-/g, '_').toUpperCase();
+export const POSITION_LABEL = (position: PositionPreset): string => {
+  const words = position.replace(/-/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 /** Horizontal anchors a composition can hand an element. */
 export type HAnchor = 'left' | 'center' | 'right' | 'edge-left' | 'edge-right' | 'off-left' | 'off-right';
@@ -467,7 +494,7 @@ const HOUSE_GRAMMAR = (offset: number): HAnchor =>
 export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   center: {
     id: 'center',
-    label: 'CENTER',
+    label: 'Centre',
     description: 'Centred type. Statements, hooks, punchlines.',
     vertical: 'center',
     gap: 0.02,
@@ -475,7 +502,7 @@ export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   },
   'left-stack': {
     id: 'left-stack',
-    label: 'LEFT_STACK',
+    label: 'Left stack',
     description: 'Everything hangs off the left margin. Editorial, asymmetric.',
     vertical: 'center',
     gap: 0.02,
@@ -483,7 +510,7 @@ export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   },
   'right-stack': {
     id: 'right-stack',
-    label: 'RIGHT_STACK',
+    label: 'Right stack',
     description: 'Everything hangs off the right margin.',
     vertical: 'center',
     gap: 0.02,
@@ -491,7 +518,7 @@ export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   },
   'top-statement': {
     id: 'top-statement',
-    label: 'TOP_STATEMENT',
+    label: 'Top statement',
     description: 'Statement in the upper region, support below it.',
     vertical: 'top',
     gap: 0.026,
@@ -499,7 +526,7 @@ export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   },
   'bottom-statement': {
     id: 'bottom-statement',
-    label: 'BOTTOM_STATEMENT',
+    label: 'Bottom statement',
     description: 'Statement anchored low, with air above it.',
     vertical: 'bottom',
     gap: 0.026,
@@ -507,7 +534,7 @@ export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   },
   split: {
     id: 'split',
-    label: 'SPLIT',
+    label: 'Split',
     description: 'Elements thrown to opposite margins with real air between them.',
     vertical: 'center',
     // Wide on purpose. A split with a tight gap is just a ragged stack; the
@@ -517,7 +544,7 @@ export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   },
   'oversized-center': {
     id: 'oversized-center',
-    label: 'OVERSIZED_CENTER',
+    label: 'Oversized centre',
     description: 'One word owns the frame. Everything else gets out of its way.',
     vertical: 'center',
     gap: 0.03,
@@ -525,7 +552,7 @@ export const COMPOSITIONS: Record<CompositionPreset, CompositionDefinition> = {
   },
   corner: {
     id: 'corner',
-    label: 'CORNER',
+    label: 'Corner',
     description: 'Type pushed into opposite corners. Maximum negative space.',
     vertical: 'center',
     gap: 0.03,

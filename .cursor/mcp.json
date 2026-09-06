@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "flarent": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/shibamsinha/Desktop/Flarent-motion-engine/mcp/server.mjs"
+      ]
+    }
+  }
+}

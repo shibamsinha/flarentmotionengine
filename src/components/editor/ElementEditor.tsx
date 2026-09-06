@@ -38,6 +38,7 @@ import { planScene, type ScenePlan } from '../../utils/plan';
 import { totalFrames } from '../../utils/timing';
 import { VisualStyleControls } from './VisualStyleControls';
 import { WordColors } from './WordColors';
+import { Disclosure } from './Disclosure';
 
 /**
  * Turn a V2 text scene into elements without changing what it looks like.
@@ -308,6 +309,47 @@ const STYLE_OPTIONS = ANIMATION_STYLES.map((id) => ({
   label: styleDefinition(id).label,
 }));
 
+/**
+ * Which arrangement the composed scene uses.
+ *
+ * Lifted out of `ElementEditor` so the scene inspector can put it under
+ * "Position", where a reader looks for it, rather than at the top of the
+ * element list. Same control, same patch — only its address changed.
+ */
+export const CompositionField: React.FC<{
+  scene: Scene;
+  onChange: (patch: Partial<Scene>) => void;
+}> = ({ scene, onChange }) => {
+  const composition = scene.composition ?? '';
+  return (
+    <div className="field">
+      <label htmlFor="scene-composition">Layout</label>
+      <select
+        id="scene-composition"
+        className="mini-select"
+        value={composition}
+        onChange={(event) =>
+          event.target.value
+            ? onChange({ composition: event.target.value as CompositionPreset })
+            : onChange({ composition: undefined })
+        }
+      >
+        <option value="">Auto — chosen from the elements</option>
+        {COMPOSITION_PRESETS.map((preset) => (
+          <option key={preset} value={preset}>
+            {COMPOSITIONS[preset].label}
+          </option>
+        ))}
+      </select>
+      <p className="hint">
+        {composition
+          ? COMPOSITIONS[composition as CompositionPreset].description
+          : 'One element centres; two stack left; three split. Elements that name their own position are placed there regardless.'}
+      </p>
+    </div>
+  );
+};
+
 export const ElementEditor: React.FC<{
   scene: Scene;
   palette: PaletteName;
@@ -353,36 +395,8 @@ export const ElementEditor: React.FC<{
     commit(next);
   };
 
-  const composition = scene.composition ?? '';
-
   return (
     <>
-      <div className="field">
-        <label htmlFor="scene-composition">Composition</label>
-        <select
-          id="scene-composition"
-          className="mini-select"
-          value={composition}
-          onChange={(event) =>
-            event.target.value
-              ? onChange({ composition: event.target.value as CompositionPreset })
-              : onChange({ composition: undefined })
-          }
-        >
-          <option value="">AUTO — chosen from the elements</option>
-          {COMPOSITION_PRESETS.map((preset) => (
-            <option key={preset} value={preset}>
-              {COMPOSITIONS[preset].label}
-            </option>
-          ))}
-        </select>
-        <p className="hint">
-          {composition
-            ? COMPOSITIONS[composition as CompositionPreset].description
-            : 'One element centres; two stack left; three split. Elements that name their own position are placed there regardless.'}
-        </p>
-      </div>
-
       <div className="field">
         <label>
           Elements · {elements.length}
@@ -436,7 +450,7 @@ export const ElementEditor: React.FC<{
                 <Select
                   label="Size"
                   value={entry.size ?? ''}
-                  placeholder={`AUTO · ${SIZE_LABEL[ROLE_SIZE[entry.role ?? 'primary']]}`}
+                  placeholder={`Auto · ${SIZE_LABEL[ROLE_SIZE[entry.role ?? 'primary']]}`}
                   options={SIZE_OPTIONS}
                   onChange={(size) =>
                     size ? patch(index, { size: size as SizePreset }) : clear(index, 'size')
@@ -445,7 +459,7 @@ export const ElementEditor: React.FC<{
                 <Select
                   label="Position"
                   value={entry.position ?? ''}
-                  placeholder="AUTO · from composition"
+                  placeholder="Auto · from composition"
                   options={POSITION_OPTIONS}
                   onChange={(position) =>
                     position
@@ -456,7 +470,7 @@ export const ElementEditor: React.FC<{
                 <Select
                   label="Animation"
                   value={entry.animation ?? ''}
-                  placeholder={`AUTO · ${styleDefinition(scene.style).label}`}
+                  placeholder={`Auto · ${styleDefinition(scene.style).label}`}
                   options={STYLE_OPTIONS}
                   onChange={(animation) =>
                     animation
@@ -466,43 +480,55 @@ export const ElementEditor: React.FC<{
                 />
               </div>
 
-              {/* Per-element word colour. Sits with the element's own style
-                  controls because that is what it is — a paint decision scoped
-                  to this piece of type rather than to the scene. */}
-              <WordColors
-                words={splitWords(entry.text)}
-                colors={entry.wordColors}
-                onChange={(wordColors) =>
-                  commit(
-                    elements.map((item, i) =>
-                      i === index ? { ...item, wordColors } : item,
-                    ),
-                  )
-                }
-              />
+              {/*
+                Per-element paint, behind a disclosure.
 
-              <VisualStyleControls
-                scope="element"
-                style={entry.visualStyle}
-                config={entry.styleConfig}
-                background={scene.background}
-                palette={palette}
-                inherited={scene.visualStyle ?? 'solid'}
-                onChange={(visualStyle, styleConfig) =>
-                  commit(
-                    elements.map((item, i) =>
-                      i === index
-                        ? {
-                            ...item,
-                            ...(visualStyle
-                              ? { visualStyle, styleConfig }
-                              : { visualStyle: undefined, styleConfig: undefined }),
-                          }
-                        : item,
-                    ),
-                  )
-                }
-              />
+                These two blocks are the reason a composed scene ran to several
+                screens: each is substantial on its own — a chip per word, and a
+                six-card treatment grid with its own conditional controls — and
+                they were repeated in full for every element. They are also the
+                two things an element least often needs, because both inherit
+                from the scene until you say otherwise.
+              */}
+              <Disclosure label="Colour and treatment">
+                {/* Per-element word colour. Sits with the element's own style
+                    controls because that is what it is — a paint decision
+                    scoped to this piece of type rather than to the scene. */}
+                <WordColors
+                  words={splitWords(entry.text)}
+                  colors={entry.wordColors}
+                  onChange={(wordColors) =>
+                    commit(
+                      elements.map((item, i) =>
+                        i === index ? { ...item, wordColors } : item,
+                      ),
+                    )
+                  }
+                />
+
+                <VisualStyleControls
+                  scope="element"
+                  style={entry.visualStyle}
+                  config={entry.styleConfig}
+                  background={scene.background}
+                  palette={palette}
+                  inherited={scene.visualStyle ?? 'solid'}
+                  onChange={(visualStyle, styleConfig) =>
+                    commit(
+                      elements.map((item, i) =>
+                        i === index
+                          ? {
+                              ...item,
+                              ...(visualStyle
+                                ? { visualStyle, styleConfig }
+                                : { visualStyle: undefined, styleConfig: undefined }),
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                />
+              </Disclosure>
             </div>
           ))}
         </div>
@@ -543,7 +569,7 @@ export const ElementEditor: React.FC<{
           </button>
         </div>
         <p className="hint">
-          AUTO on any field means the element inherits — size from its role,
+          Auto on any field means the element inherits — size from its role,
           position from the composition, animation from the scene.
         </p>
       </div>

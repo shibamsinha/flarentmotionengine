@@ -17,6 +17,7 @@ import {
 import { CANVAS } from '../../utils/timing';
 import type { VideoConfig } from '../../types/scene';
 import { resolveImageSrc } from '../motion/SceneImageLayer';
+import { Disclosure } from './Disclosure';
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/gif';
 
@@ -261,6 +262,35 @@ export const ImageControls: React.FC<{
                 Drag the picture in the preview to move it, or pull a handle to
                 resize. Corners keep its proportions — hold Shift to stretch.
               </p>
+              <div className="image-actions">
+                <button type="button" className="btn" onClick={fitToAspect}>
+                  Fit to aspect
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    patchImage({
+                      x: (1 - box.width) / 2,
+                      y: (1 - box.height) / 2,
+                    })
+                  }
+                >
+                  Centre
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => patchImage({ x: 0, y: 0, width: 1, height: 1 })}
+                >
+                  Fill frame
+                </button>
+              </div>
+
+              {/* The canvas has handles and the three buttons above cover the
+                  common placements, so the box numbers are for matching one
+                  picture to another exactly. */}
+              <Disclosure label="Exact box">
               <div className="pct-grid">
                 <NumberField
                   label="X"
@@ -291,34 +321,9 @@ export const ImageControls: React.FC<{
                   onChange={(height) => patchImage({ height })}
                 />
               </div>
-              <div className="image-actions">
-                <button type="button" className="btn" onClick={fitToAspect}>
-                  Fit to aspect
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    patchImage({
-                      x: (1 - box.width) / 2,
-                      y: (1 - box.height) / 2,
-                    })
-                  }
-                >
-                  Centre
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    patchImage({ x: 0, y: 0, width: 1, height: 1 })
-                  }
-                >
-                  Fill frame
-                </button>
-              </div>
+              </Disclosure>
 
-              <div className="field-row" style={{ marginTop: 4 }}>
+              <div className="field-row">
                 <div className="field">
                   <label>Fit</label>
                   <div className="segmented">
@@ -387,55 +392,67 @@ export const ImageControls: React.FC<{
             </div>
           ) : null}
 
-          <div className="number-row">
-            <span className="mini-label">Tint</span>
-            <input
-              type="range"
-              min={0}
-              max={0.9}
-              step={0.01}
-              value={image.scrim ?? (placement === 'full' ? 0.42 : 0)}
-              onChange={(event) =>
-                patchImage({ scrim: Number(event.target.value) })
-              }
-            />
-            <span className="mini-value">
-              {Math.round((image.scrim ?? (placement === 'full' ? 0.42 : 0)) * 100)}%
-            </span>
-          </div>
+          {/*
+            Tint and focus. Both matter — a full-bleed picture usually needs a
+            scrim before type will read on it, and a portrait cropped to 9:16
+            usually needs its subject re-centred — but neither is the question
+            you ask when you first drop a picture in.
+          */}
+          <Disclosure label="Tint and focus">
+            <div className="number-row">
+              <span className="mini-label">Tint</span>
+              <input
+                type="range"
+                min={0}
+                max={0.9}
+                step={0.01}
+                value={image.scrim ?? (placement === 'full' ? 0.42 : 0)}
+                onChange={(event) =>
+                  patchImage({ scrim: Number(event.target.value) })
+                }
+              />
+              <span className="mini-value">
+                {Math.round((image.scrim ?? (placement === 'full' ? 0.42 : 0)) * 100)}%
+              </span>
+            </div>
 
-          <div className="number-row">
-            <span className="mini-label">Focus X</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={image.focusX ?? 0.5}
-              onChange={(event) =>
-                patchImage({ focusX: Number(event.target.value) })
-              }
-            />
-            <span className="mini-value">
-              {Math.round((image.focusX ?? 0.5) * 100)}
-            </span>
-          </div>
-          <div className="number-row">
-            <span className="mini-label">Focus Y</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={image.focusY ?? 0.5}
-              onChange={(event) =>
-                patchImage({ focusY: Number(event.target.value) })
-              }
-            />
-            <span className="mini-value">
-              {Math.round((image.focusY ?? 0.5) * 100)}
-            </span>
-          </div>
+            <div className="number-row">
+              <span className="mini-label">Focus X</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={image.focusX ?? 0.5}
+                onChange={(event) =>
+                  patchImage({ focusX: Number(event.target.value) })
+                }
+              />
+              <span className="mini-value">
+                {Math.round((image.focusX ?? 0.5) * 100)}
+              </span>
+            </div>
+            <div className="number-row">
+              <span className="mini-label">Focus Y</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={image.focusY ?? 0.5}
+                onChange={(event) =>
+                  patchImage({ focusY: Number(event.target.value) })
+                }
+              />
+              <span className="mini-value">
+                {Math.round((image.focusY ?? 0.5) * 100)}
+              </span>
+            </div>
+            <p className="hint">
+              Tint darkens the picture so type can sit on it. Focus decides
+              which part survives the crop.
+            </p>
+          </Disclosure>
         </>
       ) : null}
     </div>

@@ -695,3 +695,268 @@ canvas, and moving it writes `x`/`y`. A plain-text scene has no elements to
 address, so use **Compose · split into elements** first — that is also how a
 single word becomes independently draggable, since a word is just a small
 element.
+
+---
+
+# V8 — expressiveness
+
+Five additions. **Every one is optional**, so a document that uses none of them
+parses and renders exactly as it did before, and the reference reels fingerprint
+identically.
+
+## `animation: "NONE"` — a genuine hold
+
+A sixth animation style, alongside `MASSIVE`, `PUNCH`, `STACK`, `SLIDE` and
+`RAPID`. It is a real no-motion path, not a very fast one: the identity
+transform on every frame, fully opaque from frame 0, with no seam overlap at
+either end.
+
+```json
+{ "id": "s1", "duration": 0.23, "text": "held", "animation": "NONE" }
+```
+
+`STATIC` and `HOLD` are accepted as spellings of the same thing.
+
+Use it when the *cut* carries the rhythm — a held card, a static line over a
+changing field, a hard cut between two statements. Everything else in the engine
+animates, and before V8 there was no way to say "don't".
+
+Note that `NONE` is the one style whose scene is **not** blank on frame 0. Every
+other style starts at zero opacity, which is why "frame 0 is blank" is a
+documented property of the engine elsewhere in this file.
+
+## `enterFrames` — an entrance measured in frames
+
+Valid on a scene (a default for its elements) and on an element (which wins).
+A whole number of frames, at least 1.
+
+```json
+{ "duration": 0.23, "enterFrames": 2, "text": "fast" }
+```
+
+Each style has a measured entrance length that is right for the pacing it was
+designed at — and wrong at the extremes. A seven-frame scene under `PUNCH`
+spends most of its life still arriving, which makes fast cutting impossible.
+`enterFrames` overrides the *length* while leaving the *curve* alone: the same
+easing, the same channels, the same planner, evaluated over a shorter window.
+Opacity and blur scale with it, so a two-frame entrance really is over in two
+frames rather than fading for another eight.
+
+It is **not** a keyframe. It says how long, never what happens in between.
+
+An entrance longer than its scene is clamped to fit rather than overrunning.
+
+## `fit` — an exact width, guaranteed not to clip
+
+Valid on a scene and on an element. Overrides `size` entirely.
+
+```json
+{ "text": "consistency", "fit": { "mode": "WIDTH", "maxWidth": 0.88 } }
+```
+
+A bare number is accepted as shorthand: `"fit": 0.88`.
+
+The size presets are a *scale* — six art-directed steps, each with its own
+bleed policy, deliberately length-aware. `fit` is the opposite: an exact share
+of the frame whatever the length. The ink is measured to land on `maxWidth` and
+stops there, so it never bleeds past the frame — which also means it turns the
+bleed off, because bleeding is what a preset does and not what was asked for.
+`HUGE` and `OVERSIZED` are unaffected and still run past the edges.
+
+`scale` may shrink fitted text but never grow it, so the guarantee holds.
+
+## `fontRole` — the accent face
+
+Valid on a scene and on an element. `PRIMARY` (the house grotesk) or `ACCENT`
+(a serif italic). Also accepts `SANS`, `SERIF` and `ITALIC` as spellings.
+
+```json
+{ "text": "beats", "fontRole": "ACCENT" }
+```
+
+Exactly two faces, named semantically, and no more. There is no font picker, no
+URL, no upload path — the accent stack is built from faces the renderer already
+has, so it cannot fail to load mid-render. One controlled contrast is what
+professional kinetic typography actually uses; a font manager is a different
+product.
+
+Measurement follows the face, so accent text is sized and positioned with the
+serif's own metrics rather than the grotesk's.
+
+## `inkPalette` and `accentColor` — arbitrary project colours
+
+Document level, beside the existing `backgroundPalette`.
+
+```json
+{
+  "backgroundPalette": { "green": "#1A0DCC" },
+  "inkPalette":        { "green": "#FFFFFF" },
+  "accentColor":       "#00A8FF"
+}
+```
+
+`backgroundPalette` (unchanged since V1) sets the **ground**; `inkPalette` sets
+the **type on it**; `accentColor` is one project-wide accent that graphic
+objects read.
+
+The two behave deliberately differently. A background override still has its ink
+*derived* automatically to stay readable — the safety net that keeps an imported
+script legible when it drops in a mid-tone. An ink override is honoured
+**exactly**, with no contrast substitution, because silently overriding a colour
+someone chose would make the control untrustworthy.
+
+Both are keyed by field name, so a scene still says which field it is on and the
+project decides what that field looks like. That is what keeps a palette a
+palette rather than fifty separate decisions.
+
+A malformed colour is a warning and is ignored; it costs that colour, not the
+import.
+
+The palette *name* (`forest` / `ink`) remains derived from whether any scene
+uses a black field, and is still not stored.
+
+## One constant changed
+
+`MIN_SCENE_DURATION` dropped from **0.15s to one frame (1/30s)**. It was a bound
+on an editor control, never a measured value — and at 0.15s any scene shorter
+than five frames was silently clamped, which made frame-accurate hard cutting
+impossible. The real floor is arithmetic: a scene cannot be shorter than the one
+frame a sequence needs to mount.
+
+No existing reel or template was affected; all still fingerprint identically.
+
+---
+
+# V8.2 — kinetic expressiveness
+
+Three more additions, all optional, all backward compatible.
+
+## `exit` and `exitFrames` — leaving as its own decision
+
+Valid on a scene; `exit` is also valid on an element (which wins).
+
+```json
+{ "text": "leaving", "animation": "PUNCH", "exit": "SLIDE", "exitFrames": 5 }
+```
+
+Exits already happened — a scene's type left in the manner of the style it
+arrived in — but the choice was implied and unchangeable. `exit` separates the
+two, so a line can punch in and slide out.
+
+`exit: "NONE"` removes the exit entirely: no outgoing type is drawn at the seam
+and the boundary is a genuine hard cut, not a short dissolve. Combined with
+`animation: "NONE"` all four corners are expressible:
+
+| `animation` | `exit` | Result |
+|---|---|---|
+| `PUNCH` | `PUNCH` | enter → hold → exit |
+| `PUNCH` | `NONE` | enter → hold → cut |
+| `NONE` | `PUNCH` | cut → hold → exit |
+| `NONE` | `NONE` | cut → hold → cut |
+
+`exit` defaults to the element's own `animation`, then the scene's `style` —
+which is exactly what every pre-V8.2 project already did.
+
+`exitFrames` overrides the per-style overlap length. It is still bounded by a
+third of the *incoming* scene: a seam that eats the next scene is a bug however
+deliberately it was asked for.
+
+## `stagger` — words entering one after another
+
+Valid on a scene (a default for its elements) and on an element.
+
+```json
+{ "text": "one two three four", "stagger": { "type": "WORD", "delayFrames": 2 } }
+```
+
+A bare number is accepted as shorthand: `"stagger": 2`.
+
+The engine already understood words — it lays them out, colours them and
+promotes them individually. Timing was the one axis that stopped at the element:
+words arrived together, or on `STACK`'s fixed build beat, and there was no way
+to say "two frames apart".
+
+`order` is `FORWARD` (reading order, the default and never serialised) or
+`REVERSE`. Reversing changes the *reveal*, not the sentence — per-word colour
+and emphasis keep addressing the same words.
+
+An explicit stagger wins over the style's own word timing, including `STACK`'s.
+A spacing that would run past the end of the scene is clamped rather than
+scheduling words off the end.
+
+This is **not** a keyframe track. It is one number and a direction, which the
+planner resolves — the same shape `stagger` already has on object groups.
+
+## `backgroundMotion` — a field that changes while the type holds
+
+Scene level.
+
+```json
+{
+  "text": "hold",
+  "animation": "NONE",
+  "backgroundMotion": { "mode": "ALTERNATE", "everyFrames": 4, "times": 6 }
+}
+```
+
+Flarent could already cut the field *between* scenes, and `RAPID`/`STACK` cut it
+on their own internal beats. What it could not do was hold one piece of type
+still while the field strobed underneath — previously only expressible by
+duplicating the scene once per flip, which makes the timeline unreadable and the
+text impossible to edit in one place.
+
+The field alternates between the scene's own background and its palette partner,
+held for `everyFrames` frames at a time. The type is untouched: it occupies
+identical pixels across a flip, and only the ink re-derives so it stays readable
+on the new ground.
+
+`times` bounds the number of flips; omitted, it runs to the end of the scene.
+Resolution is integer division on the frame number, so it is deterministic and a
+scrub matches a playthrough exactly.
+
+An explicit `backgroundMotion` overrides the style's own field cutting — a scene
+that says "alternate every 4 frames" has replaced `RAPID`'s per-beat flip, not
+asked for both at once.
+
+---
+
+# V8.3 — the phrase build
+
+**This adds no schema.** `buildPhraseScenes` (`src/data/phraseBuild.ts`) is a
+*constructor*: one sentence in, ordinary `Scene[]` out, assembled from the same
+`blankScene` and `element` an author would use by hand.
+
+That is the design constraint rather than an implementation detail. There is no
+phrase-build field on a scene, no flag, no back-reference to the builder, and no
+renderer path only it can take. Once the scenes exist nothing downstream can tell
+them from hand-made ones, which is what keeps them editable — the build is a
+faster way to *start*, not a mode to work inside.
+
+```
+buildPhraseScenes({ sentence: "discipline beats motivation, every single day",
+                    totalFrames: 120 })
+
+→ "discipline beats motivation,"   52 frames   PUNCH
+  "every single"                   40 frames   PUNCH
+  "day"                            28 frames   MASSIVE, emphasised, oversized
+```
+
+What it decides, and how to override each:
+
+| Decision | Default | Override |
+|---|---|---|
+| Where phrases break | punctuation, then ~3 words | `phrases` |
+| Cut lengths | `pacing` across `totalFrames` | `framesPerPhrase` |
+| Pace | `accelerate` — each card shorter | `pacing: even \| decelerate` |
+| Final word | its own display card, removed from the phrase before it | `finalWordEmphasis: false` |
+| Word reveal | 2-frame stagger | `staggerFrames` |
+
+The final word is *moved* rather than duplicated: showing it small in a phrase
+and then large on its own reads as a stutter, and the build should read as
+arriving at that word.
+
+Frame budgets are honoured exactly — the parts sum to `totalFrames`, with any
+rounding remainder given to the longest cards so it never flattens the curve.
+
+Both the editor's **Phrase build** panel and the MCP `phrase_build` tool call
+this one function.

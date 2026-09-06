@@ -24,13 +24,17 @@ import type {
   PaletteName,
   PositionPreset,
   Scene,
+  BackgroundMotion,
   SceneElement,
+  TextFit,
+  WordStagger,
   SceneImage,
   SizePreset,
   SlideDirection,
   TextCase,
   TextRole,
 } from '../types/scene';
+import type { FontRole } from './typography';
 import { makeElementId, makeSceneId } from '../data/defaultScenes';
 import { parseObjects, serialiseObject, type ObjectIssue } from './importObjects';
 import {
@@ -58,6 +62,10 @@ export type ImportedProject = {
   /** Portrait unless the document declared or implied landscape. */
   format: CanvasFormat;
   fields: FieldOverrides;
+  /** V8 — explicit ink per field, from `inkPalette`. Empty when the document sets none. */
+  ink: FieldOverrides;
+  /** V8 — the project accent, from `accentColor`. Null when unset. */
+  accent: string | null;
   overlay: OverlayImage | null;
   /** V7 — the project's audio track, or null when the document has none. */
   audio: ProjectAudio | null;
@@ -72,12 +80,178 @@ export type ImportResult =
 
 /* ------------------------------------------------------------------ vocab */
 
+
+/**
+ * `fit` — an exact width, as a fraction of the frame.
+ *
+ * Accepted either as an object (`{ mode: "WIDTH", maxWidth: 0.88 }`) or as a
+ * bare number, because "fit: 0.88" is what an author reaches for and the longer
+ * form only earns its keep once there is a second mode.
+ */
+const readFit = (
+  raw: unknown,
+  fail: (path: string, message: string) => void,
+  path: string,
+): TextFit | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+
+  const fromWidth = (value: unknown): TextFit | undefined => {
+    const width = asNumber(value);
+    if (width === null) {
+      fail(path, 'Expected a fraction of the frame width, e.g. 0.88.');
+      return undefined;
+    }
+    if (width <= 0 || width > 1) {
+      fail(path, `Must be between 0 and 1 (got ${width}).`);
+      return undefined;
+    }
+    return { mode: 'width', maxWidth: width };
+  };
+
+  if (typeof raw === 'number') return fromWidth(raw);
+  if (typeof raw === 'object') {
+    const record = raw as Record<string, unknown>;
+    const mode = typeof record.mode === 'string' ? record.mode.toLowerCase() : 'width';
+    if (mode !== 'width') {
+      fail(path, `Unknown fit mode "${record.mode}". Only WIDTH is supported.`);
+      return undefined;
+    }
+    return fromWidth(record.maxWidth ?? record.width ?? record.value);
+  }
+  fail(path, 'Expected a number or an object.');
+  return undefined;
+};
+
+const FONT_ROLE_WORDS: Record<string, FontRole> = {
+  primary: 'primary',
+  sans: 'primary',
+  default: 'primary',
+  accent: 'accent',
+  serif: 'accent',
+  italic: 'accent',
+};
+
+const readFontRole = (
+  raw: unknown,
+  fail: (path: string, message: string) => void,
+  path: string,
+): FontRole | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'string') {
+    fail(path, 'Expected PRIMARY or ACCENT.');
+    return undefined;
+  }
+  const found = FONT_ROLE_WORDS[raw.trim().toLowerCase()];
+  if (!found) {
+    fail(path, `Unknown font role "${raw}". Use PRIMARY or ACCENT.`);
+    return undefined;
+  }
+  return found;
+};
+
+
+/**
+ * `stagger` — words entering one after another.
+ *
+ * Accepted as an object or as a bare number of frames, because "stagger: 2" is
+ * what an author writes and the object form only matters once `order` is needed.
+ */
+const readStagger = (
+  raw: unknown,
+  fail: (path: string, message: string) => void,
+  path: string,
+): WordStagger | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+
+  const build = (frames: unknown, order: unknown): WordStagger | undefined => {
+    const delayFrames = asNumber(frames);
+    if (delayFrames === null) {
+      fail(path, 'Expected a number of frames between words.');
+      return undefined;
+    }
+    if (delayFrames < 0) {
+      fail(path, `Must not be negative (got ${delayFrames}).`);
+      return undefined;
+    }
+    if (!Number.isInteger(delayFrames)) {
+      fail(path, `Must be a whole number of frames (got ${delayFrames}).`);
+      return undefined;
+    }
+    let direction: 'forward' | 'reverse' | undefined;
+    if (order !== undefined && order !== null) {
+      const word = String(order).trim().toLowerCase();
+      if (word === 'forward' || word === 'reverse') direction = word;
+      else {
+        fail(`${path}.order`, `Unknown order "${order}". Use FORWARD or REVERSE.`);
+        return undefined;
+      }
+    }
+    return {
+      type: 'word',
+      delayFrames,
+      ...(direction && direction !== 'forward' ? { order: direction } : {}),
+    };
+  };
+
+  if (typeof raw === 'number') return build(raw, undefined);
+  if (typeof raw === 'object') {
+    const record = raw as Record<string, unknown>;
+    const type = typeof record.type === 'string' ? record.type.toLowerCase() : 'word';
+    if (type !== 'word') {
+      fail(path, `Unknown stagger type "${record.type}". Only WORD is supported.`);
+      return undefined;
+    }
+    return build(record.delayFrames ?? record.frames ?? record.delay, record.order);
+  }
+  fail(path, 'Expected a number or an object.');
+  return undefined;
+};
+
+/** `backgroundMotion` — a field that alternates while the type holds. */
+const readBackgroundMotion = (
+  raw: unknown,
+  fail: (path: string, message: string) => void,
+  path: string,
+): BackgroundMotion | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object') {
+    fail(path, 'Expected an object such as { "mode": "ALTERNATE", "everyFrames": 4 }.');
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  const mode = typeof record.mode === 'string' ? record.mode.toLowerCase() : 'alternate';
+  if (mode !== 'alternate') {
+    fail(path, `Unknown background mode "${record.mode}". Only ALTERNATE is supported.`);
+    return undefined;
+  }
+  const everyFrames = asNumber(record.everyFrames ?? record.every ?? record.frames);
+  if (everyFrames === null || everyFrames < 1 || !Number.isInteger(everyFrames)) {
+    fail(`${path}.everyFrames`, 'Expected a whole number of frames, at least 1.');
+    return undefined;
+  }
+  const times = asNumber(record.times);
+  if (times !== null && (times < 0 || !Number.isInteger(times))) {
+    fail(`${path}.times`, 'Expected a whole, non-negative number of flips.');
+    return undefined;
+  }
+  return {
+    mode: 'alternate',
+    everyFrames,
+    ...(times !== null ? { times } : {}),
+  };
+};
+
 const STYLES: Record<string, AnimationStyle> = {
   massive: 'massive',
   punch: 'punch',
   stack: 'stack',
   slide: 'slide',
   rapid: 'rapid',
+  /* V8 — a genuine hold. Accepted under a couple of spellings because "static"
+     is what a writer reaches for and "none" is what the schema calls it. */
+  none: 'none',
+  static: 'none',
+  hold: 'none',
 };
 
 const BACKGROUNDS: Record<string, BackgroundName> = {
@@ -631,6 +805,33 @@ const readElement = (
     else element.delay = delay;
   }
 
+  const rawExit = asString(raw.exit);
+  if (rawExit !== null && rawExit.trim() !== '') {
+    const found = STYLES[vocab(rawExit)];
+    if (!found) fail('exit', `"${rawExit}" is not a valid exit. Expected one of: ${canon(STYLES)}.`);
+    else element.exit = found;
+  }
+
+  const elementStagger = readStagger(raw.stagger, fail, 'stagger');
+  if (elementStagger) element.stagger = elementStagger;
+
+  const elementFit = readFit(raw.fit ?? raw.fitWidth, fail, 'fit');
+  if (elementFit) element.fit = elementFit;
+
+  const elementFace = readFontRole(raw.fontRole ?? raw.face, fail, 'fontRole');
+  if (elementFace) element.fontRole = elementFace;
+
+  /* V8 — an explicit entrance length in frames. Whole frames only: a fractional
+     entrance length has no meaning on a frame grid, and rounding it silently
+     would make the document say one thing and the render do another. */
+  const enterFrames = asNumber(raw.enterFrames);
+  if (enterFrames !== null) {
+    if (enterFrames < 1) fail('enterFrames', `Must be at least one frame (got ${enterFrames}).`);
+    else if (!Number.isInteger(enterFrames))
+      fail('enterFrames', `Must be a whole number of frames (got ${enterFrames}).`);
+    else element.enterFrames = enterFrames;
+  }
+
   const rawEmphasis = raw.emphasis;
   if (Array.isArray(rawEmphasis)) {
     element.emphasis = rawEmphasis.filter((w): w is string => typeof w === 'string');
@@ -902,6 +1103,38 @@ const readScene = (
     else fontSize = rawScale;
   }
 
+  let sceneExit: AnimationStyle | undefined;
+  const rawSceneExit = asString(raw.exit);
+  if (rawSceneExit !== null && rawSceneExit.trim() !== '') {
+    const found = STYLES[vocab(rawSceneExit)];
+    if (!found) fail('exit', `"${rawSceneExit}" is not a valid exit. Expected one of: ${canon(STYLES)}.`);
+    else sceneExit = found;
+  }
+
+  let sceneExitFrames: number | undefined;
+  const rawExitFrames = asNumber(raw.exitFrames);
+  if (rawExitFrames !== null) {
+    if (rawExitFrames < 0) fail('exitFrames', `Must not be negative (got ${rawExitFrames}).`);
+    else if (!Number.isInteger(rawExitFrames))
+      fail('exitFrames', `Must be a whole number of frames (got ${rawExitFrames}).`);
+    else sceneExitFrames = rawExitFrames;
+  }
+
+  const sceneStagger = readStagger(raw.stagger, fail, 'stagger');
+  const sceneBackgroundMotion = readBackgroundMotion(raw.backgroundMotion, fail, 'backgroundMotion');
+
+  const sceneFit = readFit(raw.fit ?? raw.fitWidth, fail, 'fit');
+  const sceneFace = readFontRole(raw.fontRole ?? raw.face, fail, 'fontRole');
+
+  let sceneEnterFrames: number | undefined;
+  const rawEnter = asNumber(raw.enterFrames);
+  if (rawEnter !== null) {
+    if (rawEnter < 1) fail('enterFrames', `Must be at least one frame (got ${rawEnter}).`);
+    else if (!Number.isInteger(rawEnter))
+      fail('enterFrames', `Must be a whole number of frames (got ${rawEnter}).`);
+    else sceneEnterFrames = rawEnter;
+  }
+
   const flipBackground =
     typeof raw.flipBackground === 'boolean' ? raw.flipBackground : undefined;
 
@@ -963,6 +1196,13 @@ const readScene = (
         : {}),
       ...(elements !== undefined ? { elements } : {}),
       ...(fontSize !== undefined ? { fontSize } : {}),
+      ...(sceneEnterFrames !== undefined ? { enterFrames: sceneEnterFrames } : {}),
+      ...(sceneExit ? { exit: sceneExit } : {}),
+      ...(sceneExitFrames !== undefined ? { exitFrames: sceneExitFrames } : {}),
+      ...(sceneStagger ? { stagger: sceneStagger } : {}),
+      ...(sceneBackgroundMotion ? { backgroundMotion: sceneBackgroundMotion } : {}),
+      ...(sceneFit ? { fit: sceneFit } : {}),
+      ...(sceneFace ? { fontRole: sceneFace } : {}),
       ...(direction !== undefined ? { direction } : {}),
       ...(flipBackground !== undefined ? { flipBackground } : {}),
       ...(hideOverlay !== undefined ? { hideOverlay } : {}),
@@ -1144,6 +1384,65 @@ export const parseFlarentScript = (input: string): ImportResult => {
     }
   }
 
+  /**
+   * V8 — explicit ink, and the project accent.
+   *
+   * Both are new optional document keys, so a pre-V8 file simply has neither and
+   * behaves exactly as it always did: no ink override means the derived,
+   * auto-contrasting ink, and no accent means the house default.
+   *
+   * Bad values are warnings rather than errors, matching how `backgroundPalette`
+   * already treats them — a mistyped colour should cost that colour, not the
+   * whole import.
+   */
+  const ink: FieldOverrides = {};
+  const rawInk = doc.inkPalette ?? doc.textPalette ?? doc.foreground;
+  if (rawInk !== undefined && rawInk !== null) {
+    if (!isRecord(rawInk)) {
+      push({
+        path: 'inkPalette',
+        message: 'Must be an object of field name → hex colour.',
+        severity: 'warning',
+      });
+    } else {
+      Object.entries(rawInk).forEach(([key, value]) => {
+        const name = BACKGROUNDS[key.trim().toLowerCase()];
+        const hexValue = asString(value);
+        if (!name) {
+          push({
+            path: `inkPalette.${key}`,
+            message: `Unknown field "${key}" — ignored. Known fields: ${list(BACKGROUNDS)}.`,
+            severity: 'warning',
+          });
+          return;
+        }
+        const hex = hexValue ? normaliseHex(hexValue) : null;
+        if (!hex) {
+          push({
+            path: `inkPalette.${key}`,
+            message: `"${String(value)}" is not a hex colour — ignored.`,
+            severity: 'warning',
+          });
+          return;
+        }
+        ink[name] = hex;
+      });
+    }
+  }
+
+  let accent: string | null = null;
+  const rawAccent = asString(doc.accentColor ?? doc.accent);
+  if (rawAccent) {
+    const hex = normaliseHex(rawAccent);
+    if (!hex) {
+      push({
+        path: 'accentColor',
+        message: `"${rawAccent}" is not a hex colour — ignored.`,
+        severity: 'warning',
+      });
+    } else accent = hex;
+  }
+
   /* overlay --------------------------------------------------------------- */
   const { overlay } = readOverlay(doc.overlay ?? doc.staticImage, push);
   // Errors pushed by readAudio fail the document through the shared issue
@@ -1228,6 +1527,8 @@ export const parseFlarentScript = (input: string): ImportResult => {
       palette: usesBlack ? 'ink' : 'forest',
       format,
       fields,
+      ink,
+      accent,
       overlay,
       audio,
       scenes,
@@ -1267,6 +1568,19 @@ const serialiseElement = (element: SceneElement) => ({
     ? { scale: element.scale }
     : {}),
   ...(element.delay ? { delay: element.delay } : {}),
+  ...(element.enterFrames ? { enterFrames: element.enterFrames } : {}),
+  ...(element.exit ? { exit: shout(element.exit) } : {}),
+  ...(element.stagger
+    ? { stagger: {
+        type: 'WORD',
+        delayFrames: element.stagger.delayFrames,
+        ...(element.stagger.order && element.stagger.order !== 'forward'
+          ? { order: shout(element.stagger.order) }
+          : {}),
+      } }
+    : {}),
+  ...(element.fit ? { fit: { mode: 'WIDTH', maxWidth: element.fit.maxWidth } } : {}),
+  ...(element.fontRole ? { fontRole: shout(element.fontRole) } : {}),
   ...(element.from ? { from: shout(element.from) } : {}),
   ...(element.x !== undefined && element.y !== undefined
     ? { x: element.x, y: element.y }
@@ -1282,6 +1596,14 @@ export const serialiseProject = (
   format: CanvasFormat = DEFAULT_FORMAT,
   /** V7. Last and optional, so every existing caller is unaffected. */
   audio: ProjectAudio | null = null,
+  /**
+   * V8 — the palette's other two halves. Appended rather than folded into
+   * `fields` for the same reason V7's audio was appended: every existing caller
+   * keeps working untouched, and a project that sets neither serialises to
+   * byte-identical JSON.
+   */
+  ink: FieldOverrides = {},
+  accent: string | null = null,
 ): string => {
   const canvas = canvasFor(format);
   let start = 0;
@@ -1295,6 +1617,8 @@ export const serialiseProject = (
       scenes.reduce((total, scene) => total + scene.duration, 0),
     ),
     ...(Object.keys(fields).length > 0 ? { backgroundPalette: fields } : {}),
+    ...(Object.keys(ink).length > 0 ? { inkPalette: ink } : {}),
+    ...(accent ? { accentColor: accent } : {}),
     ...(overlay ? { overlay } : {}),
     ...(audio
       ? {
@@ -1336,6 +1660,29 @@ export const serialiseProject = (
         ...(scene.elements && scene.elements.length > 0
           ? { elements: scene.elements.map(serialiseElement) }
           : {}),
+        ...(scene.enterFrames !== undefined ? { enterFrames: scene.enterFrames } : {}),
+        ...(scene.exit ? { exit: shout(scene.exit) } : {}),
+        ...(scene.exitFrames !== undefined ? { exitFrames: scene.exitFrames } : {}),
+        ...(scene.stagger
+          ? { stagger: {
+              type: 'WORD',
+              delayFrames: scene.stagger.delayFrames,
+              ...(scene.stagger.order && scene.stagger.order !== 'forward'
+                ? { order: shout(scene.stagger.order) }
+                : {}),
+            } }
+          : {}),
+        ...(scene.backgroundMotion
+          ? { backgroundMotion: {
+              mode: 'ALTERNATE',
+              everyFrames: scene.backgroundMotion.everyFrames,
+              ...(scene.backgroundMotion.times !== undefined
+                ? { times: scene.backgroundMotion.times }
+                : {}),
+            } }
+          : {}),
+        ...(scene.fit ? { fit: { mode: 'WIDTH', maxWidth: scene.fit.maxWidth } } : {}),
+        ...(scene.fontRole ? { fontRole: shout(scene.fontRole) } : {}),
         ...(scene.fontSize !== undefined && scene.fontSize !== 1
           ? { scale: scene.fontSize }
           : {}),

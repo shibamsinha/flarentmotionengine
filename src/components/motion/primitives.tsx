@@ -57,6 +57,10 @@ export const ENTER_SECONDS = {
   slide: ENTER.transform * 1.1,
   stack: 0.11,
   rapid: ENTER.transform,
+  /* NONE has no entrance, so nothing ever has to wait for it to finish. The
+     editor's delay-chaining reads this and correctly schedules the next element
+     immediately. */
+  none: 0,
 } as const;
 
 export type MotionValues = {
@@ -401,7 +405,12 @@ export const TypeBlock: React.FC<{
         left: block.left,
         width: block.width,
         color,
-        fontFamily: FONT_STACK,
+        /* V8 — the face the planner measured this block with. Reading it from
+           the block rather than from a constant is what keeps layout and paint
+           in agreement: an accent element was *solved* in the serif italic, so
+           painting it in the grotesk would put every word in the wrong place. */
+        fontFamily: block.face?.family ?? FONT_STACK,
+        fontStyle: block.face?.italic ? 'italic' : undefined,
         transform: toTransform(v),
         transformOrigin: origin,
         opacity: v.opacity,
@@ -583,6 +592,13 @@ export const StyleBlock: React.FC<{
     // is what staggering a composition actually means.
     const base = amplify(at(f - element.delay), element.motion);
     if (!element.from) return base;
+    /*
+     * `frames: 0` means the style has no entrance window (NONE), so there is
+     * nothing for an offscreen origin to decay over. Treating it as already
+     * arrived is what keeps "no motion" honest: without this the element would
+     * still travel in over a single frame, which is a pop rather than a hold.
+     */
+    if (motion.frames <= 0) return base;
     const t = travelEase(clamp01((f - element.delay) / Math.max(1, motion.frames)));
     return {
       ...base,
@@ -695,6 +711,42 @@ export type MotionProps = {
 
 export const framesFor = (seconds: number, fps: number): number =>
   Math.max(1, Math.round(seconds * fps));
+
+/**
+ * How long this element's entrance takes, and how to scale the channels with it.
+ *
+ * The style's measured length is the default and stays the default — those
+ * numbers came from frame-by-frame measurement of the reference and are not
+ * something to override casually. `enterFrames` exists for the case measurement
+ * cannot cover: a scene so short that the designed entrance would fill it.
+ *
+ * **An entrance is three durations, not one.** Position, opacity and blur run on
+ * deliberately different curves over deliberately different windows — that
+ * relationship is what stops the motion reading like a template. So overriding
+ * only the transform would produce a "2-frame entrance" whose opacity was still
+ * resolving eight frames later, which is not what anyone asked for and is
+ * exactly what a render test caught.
+ *
+ * `channel()` therefore scales the companion durations by the same ratio,
+ * preserving their proportions inside the shorter window. With no override the
+ * ratio is exactly 1 and every value is bit-for-bit what it always was.
+ */
+export const enterTiming = (
+  element: import('../../utils/plan').PlannedElement,
+  seconds: number,
+  fps: number,
+): { frames: number; channel: (channelSeconds: number) => number } => {
+  const natural = framesFor(seconds, fps);
+  const frames = element.enterFrames ?? natural;
+  const ratio = frames / Math.max(1, natural);
+  return {
+    frames,
+    channel: (channelSeconds: number) =>
+      ratio === 1
+        ? framesFor(channelSeconds, fps)
+        : Math.max(1, Math.round(framesFor(channelSeconds, fps) * ratio)),
+  };
+};
 
 export { EASE, blockLeft };
 export type { EaseName };

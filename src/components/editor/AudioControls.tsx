@@ -23,6 +23,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProjectAudio } from '../../types/audio';
 import { AUDIO_EXTENSIONS, defaultSelection } from '../../types/audio';
+import { Group } from './Group';
+import { Disclosure } from './Disclosure';
+import { CANVAS } from '../../utils/timing';
 import {
   cachedWaveform,
   computeWaveform,
@@ -283,25 +286,24 @@ export const AudioControls: React.FC<{
 
   if (!audio) {
     return (
-      <div className="section">
-        <div className="section-head">Audio</div>
-        <div className="controls">
-          {picker}
+      <Group title="Audio">
+        {picker}
+        <div className="empty-state">
+          <p className="empty-state-text">
+            One track for the whole video. Trim the part you want; it plays on
+            the project timeline, independent of scene boundaries.
+          </p>
           <button
             type="button"
-            className="btn wide"
+            className="btn"
             disabled={busy !== null}
             onClick={() => inputRef.current?.click()}
           >
-            {busy ?? '+ Add audio'}
+            {busy ?? 'Add audio'}
           </button>
-          {error ? <p className="hint is-error">{error}</p> : null}
-          <p className="hint">
-            One track for the whole video. Trim the part you want; it plays on the
-            project timeline and is independent of scene boundaries.
-          </p>
         </div>
-      </div>
+        {error ? <p className="hint is-error">{error}</p> : null}
+      </Group>
     );
   }
 
@@ -312,14 +314,7 @@ export const AudioControls: React.FC<{
   const clipped = selected - usable > 0.05;
 
   return (
-    <div className="section">
-      <div className="section-head">
-        Audio
-        <span className="spacer" />
-        <span>{shortTime(total)}</span>
-      </div>
-
-      <div className="controls">
+    <Group title="Audio" summary={shortTime(total)}>
         {picker}
 
         <div className="audio-file">
@@ -372,63 +367,25 @@ export const AudioControls: React.FC<{
           </p>
         ) : null}
 
-        <div className="field-row">
-          <div className="field">
-            <label>Starts at (s)</label>
+        <div className="field">
+          <label>Volume</label>
+          <div className="audio-volume">
             <input
-              className="text-input"
-              type="number"
-              step={0.1}
+              type="range"
               min={0}
-              value={audio.timelineStart}
-              onChange={(e) => patch({ timelineStart: Math.max(0, Number(e.target.value) || 0) })}
+              max={1}
+              step={0.01}
+              value={audio.volume}
+              onChange={(e) => patch({ volume: Number(e.target.value) })}
             />
-          </div>
-          <div className="field">
-            <label>Volume</label>
-            <div className="audio-volume">
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={audio.volume}
-                onChange={(e) => patch({ volume: Number(e.target.value) })}
-              />
-              <button
-                type="button"
-                className={`btn tiny${audio.muted ? ' is-on' : ''}`}
-                onClick={() => patch({ muted: !audio.muted })}
-                title={audio.muted ? 'Unmute' : 'Mute'}
-              >
-                {audio.muted ? 'Muted' : `${Math.round(audio.volume * 100)}%`}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="field-row">
-          <div className="field">
-            <label>Fade in (s)</label>
-            <input
-              className="text-input"
-              type="number"
-              step={0.1}
-              min={0}
-              value={audio.fadeIn ?? 0}
-              onChange={(e) => patch({ fadeIn: Math.max(0, Number(e.target.value) || 0) })}
-            />
-          </div>
-          <div className="field">
-            <label>Fade out (s)</label>
-            <input
-              className="text-input"
-              type="number"
-              step={0.1}
-              min={0}
-              value={audio.fadeOut ?? 0}
-              onChange={(e) => patch({ fadeOut: Math.max(0, Number(e.target.value) || 0) })}
-            />
+            <button
+              type="button"
+              className={`btn tiny${audio.muted ? ' is-on' : ''}`}
+              onClick={() => patch({ muted: !audio.muted })}
+              title={audio.muted ? 'Unmute' : 'Mute'}
+            >
+              {audio.muted ? 'Muted' : `${Math.round(audio.volume * 100)}%`}
+            </button>
           </div>
         </div>
 
@@ -458,11 +415,58 @@ export const AudioControls: React.FC<{
           </button>
         </div>
 
+        {/*
+          Where the track sits on the project clock, and how it opens and
+          closes. Real controls, but the trim above answers the question you
+          opened this panel with; these answer the one after it.
+        */}
+        <Disclosure label="Placement and fades">
+          <div className="field">
+            <label>Starts at</label>
+            <div className="number-row">
+              <input
+                type="number"
+                step={0.1}
+                min={0}
+                value={audio.timelineStart}
+                onChange={(e) => patch({ timelineStart: Math.max(0, Number(e.target.value) || 0) })}
+              />
+              <span className="unit-note">
+                seconds · <b>{Math.round(audio.timelineStart * CANVAS.fps)}f</b>
+              </span>
+            </div>
+            <p className="hint">Measured from the start of the video, not of a scene.</p>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label>Fade in</label>
+              <input
+                type="number"
+                step={0.1}
+                min={0}
+                value={audio.fadeIn ?? 0}
+                onChange={(e) => patch({ fadeIn: Math.max(0, Number(e.target.value) || 0) })}
+              />
+            </div>
+            <div className="field">
+              <label>Fade out</label>
+              <input
+                type="number"
+                step={0.1}
+                min={0}
+                value={audio.fadeOut ?? 0}
+                onChange={(e) => patch({ fadeOut: Math.max(0, Number(e.target.value) || 0) })}
+              />
+            </div>
+          </div>
+          <p className="hint">Both in seconds.</p>
+        </Disclosure>
+
         <p className="hint">
           Audio plays from the project transport below — one playhead for the
           video and the track together.
         </p>
-      </div>
-    </div>
+    </Group>
   );
 };

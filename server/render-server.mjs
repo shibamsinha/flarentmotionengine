@@ -18,9 +18,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { bundle } from '@remotion/bundler';
+import { canvas, drawScaled, fillRect, readPng, writePng } from './png.mjs';
 import {
   ensureBrowser,
+  makeCancelSignal,
   renderMedia,
+  renderStill,
   selectComposition,
 } from '@remotion/renderer';
 
@@ -140,9 +143,34 @@ const slug = (scenes) => {
   return words || 'flarent';
 };
 
-const runJob = async (jobId, scenes, palette, fields, overlay, format, audio) => {
+const runJob = async (jobId, scenes, palette, fields, overlay, format, audio, ink = {}, accent = null) => {
   const started = Date.now();
-  const set = (patch) => jobs.set(jobId, { ...jobs.get(jobId), ...patch });
+
+  /**
+   * Update the job, unless it has already been cancelled.
+   *
+   * Cancellation is asynchronous: `DELETE` marks the job and fires Remotion's
+   * signal, but the signal is only observed once the render itself is running.
+   * In the window before that, this function was still reporting progress —
+   * "browser", then "bundling" — and each of those overwrote the `cancelled`
+   * status, so a job cancelled early resurrected itself and finished.
+   *
+   * `cancelled` is therefore terminal: once set, only the final cancelled state
+   * may be written.
+   */
+  const set = (patch) => {
+    const current = jobs.get(jobId);
+    if (current?.status === 'cancelled' && patch.status !== 'cancelled') return;
+    jobs.set(jobId, { ...current, ...patch });
+  };
+
+  /*
+   * Cancellation. Remotion's own signal is the only safe way to stop a render:
+   * killing the process would orphan a headless Chrome and a half-written MP4.
+   * The canceller is kept on the job so `DELETE /api/render/:id` can reach it.
+   */
+  const { cancelSignal, cancel } = makeCancelSignal();
+  set({ cancel });
 
   try {
     set({ status: 'browser', progress: 0 });
@@ -165,6 +193,8 @@ const runJob = async (jobId, scenes, palette, fields, overlay, format, audio) =>
       scenes,
       palette,
       fields,
+      ...(Object.keys(ink).length > 0 ? { ink } : {}),
+      ...(accent ? { accent } : {}),
       ...(overlay ? { overlay } : {}),
       ...(audio ? { audio } : {}),
       ...(format === 'landscape' ? { format } : {}),
@@ -194,6 +224,7 @@ const runJob = async (jobId, scenes, palette, fields, overlay, format, audio) =>
       colorSpace: 'bt709',
       audioCodec: null,
       chromiumOptions: { disableWebSecurity: false },
+      cancelSignal,
       onProgress: ({ progress }) => set({ progress }),
     });
 
@@ -204,6 +235,7 @@ const runJob = async (jobId, scenes, palette, fields, overlay, format, audio) =>
       filename,
       ms: Date.now() - started,
       durationInFrames: composition.durationInFrames,
+      cancel: undefined,
     });
     console.log(
       `[flarent] rendered ${filename} (${composition.durationInFrames} frames) in ${(
@@ -211,12 +243,17 @@ const runJob = async (jobId, scenes, palette, fields, overlay, format, audio) =>
       ).toFixed(1)}s`,
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // A cancelled render is not a failure — reporting it as one would have the
+    // caller retry something the user deliberately stopped.
+    const wasCancelled = jobs.get(jobId)?.status === 'cancelled' || /cancel/i.test(message);
+    if (wasCancelled) {
+      console.log(`[flarent] render ${jobId} cancelled`);
+      set({ status: 'cancelled', progress: 0, message: 'Cancelled.', cancel: undefined });
+      return;
+    }
     console.error('[flarent] render failed:', error);
-    set({
-      status: 'error',
-      progress: 0,
-      message: error instanceof Error ? error.message : String(error),
-    });
+    set({ status: 'error', progress: 0, message, cancel: undefined });
   }
 };
 
@@ -259,7 +296,12 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, bundled: Boolean(bundleCache) });
   }
 
-  if (url.pathname === '/api/render' && req.method === 'POST') {
+  if (
+    (url.pathname === '/api/render' ||
+      url.pathname === '/api/still' ||
+      url.pathname === '/api/contact-sheet') &&
+    req.method === 'POST'
+  ) {
     try {
       const body = JSON.parse(await readBody(req));
       const scenes = Array.isArray(body?.scenes) ? body.scenes : null;
@@ -281,6 +323,30 @@ const server = http.createServer(async (req, res) => {
           }
         }
       }
+      /**
+       * V8 — the palette's other two halves.
+       *
+       * Validated exactly like `fields` above: only known field names, only
+       * well-formed hex. An unset palette sends nothing at all, so a pre-V8
+       * client's request is byte-identical to what it always was.
+       */
+      const ink = {};
+      if (body?.ink && typeof body.ink === 'object') {
+        for (const [name, value] of Object.entries(body.ink)) {
+          if (
+            ['green', 'cream', 'black'].includes(name) &&
+            typeof value === 'string' &&
+            /^#[0-9a-f]{6}$/i.test(value)
+          ) {
+            ink[name] = value;
+          }
+        }
+      }
+      const accent =
+        typeof body?.accent === 'string' && /^#[0-9a-f]{6}$/i.test(body.accent)
+          ? body.accent
+          : null;
+
       /**
        * The project-level static image. Like a scene image it travels as a
        * path, not inlined — and it is only accepted with a `src`, so a
@@ -331,14 +397,211 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      /**
+       * A single frame, rendered synchronously.
+       *
+       * Added for the MCP layer's `render_preview`, which needs something an AI
+       * client can actually look at. It shares every line of validation above
+       * with the MP4 path on purpose: a preview that was bundled or configured
+       * differently would be a picture of a different reel.
+       *
+       * Synchronous because one frame is fast — no browser download, and the
+       * bundle is usually already cached — so a job id and a polling round trip
+       * would cost more than the render.
+       */
+      if (url.pathname === '/api/still') {
+        const inputProps = {
+          scenes, palette, fields,
+          ...(Object.keys(ink).length > 0 ? { ink } : {}),
+          ...(accent ? { accent } : {}),
+          ...(overlay ? { overlay } : {}),
+          ...(audio ? { audio } : {}),
+          ...(format === 'landscape' ? { format } : {}),
+        };
+
+        await ensureBrowser();
+        const serveUrl = await getBundle(() => {});
+        const composition = await selectComposition({
+          serveUrl, id: COMPOSITION_ID, inputProps,
+        });
+
+        const requested = Number(body?.frame);
+        // Frame 0 of every reel is blank by design — entrance opacity starts at
+        // zero — so an unspecified preview takes the midpoint, where there is
+        // actually something to see.
+        const frame = Number.isFinite(requested)
+          ? Math.min(composition.durationInFrames - 1, Math.max(0, Math.round(requested)))
+          : Math.floor(composition.durationInFrames / 2);
+
+        const filename = `still-${Date.now().toString(36)}-${frame}.png`;
+        const output = path.join(OUT_DIR, filename);
+
+        await renderStill({
+          composition, serveUrl, output, inputProps, frame,
+          imageFormat: 'png',
+          chromiumOptions: { disableWebSecurity: false },
+        });
+
+        const { size } = await fsp.stat(output);
+        console.log(`[flarent] still frame ${frame} -> ${filename} (${size} bytes)`);
+        return json(res, 200, {
+          filename,
+          path: output,
+          frame,
+          durationInFrames: composition.durationInFrames,
+          width: composition.width,
+          height: composition.height,
+          bytes: size,
+        });
+      }
+
+      /**
+       * A contact sheet: several frames of the same reel, tiled into one image.
+       *
+       * Built on the still path rather than beside it — same bundle, same
+       * composition, same validation — because a sheet whose frames were
+       * produced differently from a preview would be a picture of a different
+       * reel. `renderStill` is called once per requested frame and the results
+       * are composited here.
+       *
+       * Rendering only the frames asked for is the whole efficiency argument:
+       * a nine-cell sheet of a 600-frame reel renders nine frames, not 600.
+       */
+      if (url.pathname === '/api/contact-sheet') {
+        const inputProps = {
+          scenes, palette, fields,
+          ...(Object.keys(ink).length > 0 ? { ink } : {}),
+          ...(accent ? { accent } : {}),
+          ...(overlay ? { overlay } : {}),
+          ...(audio ? { audio } : {}),
+          ...(format === 'landscape' ? { format } : {}),
+        };
+
+        const wanted = Array.isArray(body?.frames) ? body.frames : [];
+        if (wanted.length === 0) {
+          return json(res, 400, { error: 'No frames requested' });
+        }
+        if (wanted.length > 36) {
+          return json(res, 400, { error: 'At most 36 frames in one sheet' });
+        }
+
+        await ensureBrowser();
+        const serveUrl = await getBundle(() => {});
+        const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps });
+
+        const frames = wanted.map((value) =>
+          Math.min(
+            composition.durationInFrames - 1,
+            Math.max(0, Math.round(Number(value) || 0)),
+          ),
+        );
+
+        const columns = Math.max(
+          1,
+          Math.min(6, Math.round(Number(body?.columns) || 0) || Math.ceil(Math.sqrt(frames.length))),
+        );
+        const rows = Math.ceil(frames.length / columns);
+
+        // Cell size is derived from a target sheet width so the output is a
+        // sensible size whatever the grid — a 6-wide sheet of full frames would
+        // be 6480px across and useless to look at.
+        const gap = 8;
+        const targetWidth = 1400;
+        const cellWidth = Math.max(
+          80,
+          Math.floor((targetWidth - gap * (columns + 1)) / columns),
+        );
+        const cellHeight = Math.max(
+          80,
+          Math.round((cellWidth * composition.height) / composition.width),
+        );
+
+        const sheet = canvas(
+          columns * cellWidth + gap * (columns + 1),
+          rows * cellHeight + gap * (rows + 1),
+          [18, 18, 18],
+        );
+
+        const temp = [];
+        const cells = [];
+        try {
+          for (let i = 0; i < frames.length; i++) {
+            const file = path.join(OUT_DIR, `sheet-${Date.now().toString(36)}-${i}.png`);
+            await renderStill({
+              composition, serveUrl, output: file, inputProps, frame: frames[i],
+              imageFormat: 'png',
+              chromiumOptions: { disableWebSecurity: false },
+            });
+            temp.push(file);
+
+            const column = i % columns;
+            const row = Math.floor(i / columns);
+            const x = gap + column * (cellWidth + gap);
+            const y = gap + row * (cellHeight + gap);
+
+            drawScaled(sheet, readPng(file), x, y, cellWidth, cellHeight);
+            // A hairline under each cell separates frames that share a field
+            // colour, which is otherwise the one case where a grid reads as one
+            // continuous image.
+            fillRect(sheet, x, y + cellHeight - 1, cellWidth, 1, [60, 60, 60]);
+
+            cells.push({ index: i, frame: frames[i], column, row, x, y, width: cellWidth, height: cellHeight });
+          }
+
+          const filename = `contact-${Date.now().toString(36)}-${frames.length}.png`;
+          const output = path.join(OUT_DIR, filename);
+          writePng(output, sheet);
+          const { size } = await fsp.stat(output);
+
+          console.log(`[flarent] contact sheet ${filename} (${frames.length} frames, ${size} bytes)`);
+          return json(res, 200, {
+            filename,
+            path: output,
+            width: sheet.width,
+            height: sheet.height,
+            columns,
+            rows,
+            bytes: size,
+            cells,
+            durationInFrames: composition.durationInFrames,
+          });
+        } finally {
+          // The individual frames were scaffolding; only the sheet is the result.
+          for (const file of temp) await fsp.rm(file, { force: true });
+        }
+      }
+
       const jobId = randomUUID();
       jobs.set(jobId, { status: 'starting', progress: 0 });
       // Fire and forget — the client polls for progress.
-      void runJob(jobId, scenes, palette, fields, overlay, format, audio);
+      void runJob(jobId, scenes, palette, fields, overlay, format, audio, ink, accent);
       return json(res, 202, { jobId });
     } catch (error) {
-      return json(res, 400, { error: String(error) });
+      return json(res, 400, { error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /**
+   * Cancel a running render.
+   *
+   * Uses Remotion's own cancel signal rather than killing anything: that lets
+   * the renderer close its headless Chrome and clean up the partial file, where
+   * a process kill would leave both behind.
+   */
+  if (url.pathname.startsWith('/api/render/') && req.method === 'DELETE') {
+    const jobId = url.pathname.slice('/api/render/'.length);
+    const job = jobs.get(jobId);
+    if (!job) return json(res, 404, { error: 'Unknown job' });
+    if (job.status === 'done' || job.status === 'error' || job.status === 'cancelled') {
+      return json(res, 409, { error: `Job is already ${job.status}.`, status: job.status });
+    }
+    jobs.set(jobId, { ...job, status: 'cancelled', progress: 0 });
+    try {
+      job.cancel?.();
+    } catch {
+      /* Already finishing — the status above is still the right answer. */
+    }
+    return json(res, 200, { jobId, status: 'cancelled' });
   }
 
   /**
@@ -403,7 +666,10 @@ const server = http.createServer(async (req, res) => {
     const jobId = url.pathname.slice('/api/render/'.length);
     const job = jobs.get(jobId);
     if (!job) return json(res, 404, { error: 'Unknown job' });
-    return json(res, 200, job);
+    // `cancel` is a function held for the DELETE route; it is not part of the
+    // job's public state.
+    const { cancel, ...state } = job;
+    return json(res, 200, state);
   }
 
   if (url.pathname.startsWith('/out/') && req.method === 'GET') {

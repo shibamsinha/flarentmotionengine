@@ -8,10 +8,20 @@
  */
 
 import type { VisualStyleConfig, VisualStyleName } from '../utils/visualStyle';
+import type { FontRole } from '../utils/typography';
 import type { SceneObject } from './object';
 import type { ProjectAudio } from './audio';
 
-export type AnimationStyle = 'massive' | 'punch' | 'stack' | 'slide' | 'rapid';
+/**
+ * The animation vocabulary.
+ *
+ * `none` is a genuine no-motion path, not a very fast animation: its component
+ * returns the identity transform on every frame, so a scene using it is a hard
+ * cut with type that does not move. Professional kinetic typography leans on
+ * held cards and cut-driven rhythm as much as on movement, and simulating that
+ * with a one-frame entrance leaves a visible pop.
+ */
+export type AnimationStyle = 'massive' | 'punch' | 'stack' | 'slide' | 'rapid' | 'none';
 
 export type BackgroundName = 'green' | 'cream' | 'black';
 
@@ -80,6 +90,73 @@ export type CompositionPreset =
   | 'corner';
 
 /**
+ * V8 — fit type to a share of the frame.
+ *
+ * The size presets are a *scale*: six steps, art-directed, each with its own
+ * bleed policy. That is the right model almost always, and it is deliberately
+ * coarse — a scale a designer can hold in their head beats a slider.
+ *
+ * It stops being right when the requirement is a number: "this line must be 88%
+ * of the frame and must not clip". No preset expresses that, because a preset's
+ * job is to be length-aware and this is the opposite — an exact width whatever
+ * the length. So `fit` sits beside `size` rather than replacing it, and when
+ * present it wins.
+ *
+ * The guarantee is the point: fitted text is measured to land on `maxWidth` and
+ * never bleeds past it, whatever the face, the length or the alignment.
+ */
+export type TextFit = {
+  /** Only width-fitting for now; the field exists so height-fitting can be added without a breaking change. */
+  mode: 'width';
+  /** Share of the frame width the ink should occupy, 0.05–1. */
+  maxWidth: number;
+};
+
+/**
+ * V8.2 — per-word stagger.
+ *
+ * The engine already understands words: it lays them out individually, colours
+ * them individually and promotes them for emphasis. Timing was the one axis that
+ * stopped at the element — every word arrived together (or on STACK's fixed
+ * build beat) and there was no way to say "two frames apart".
+ *
+ * This is the missing axis, and it is deliberately *one number plus a direction*
+ * rather than a per-word list. A list would be a keyframe track in disguise; a
+ * spacing is an intent the planner resolves, which is the same shape `stagger`
+ * already has on object groups.
+ */
+export type WordStagger = {
+  /** Only word-level for now; the field exists so letters can be added later. */
+  type: 'word';
+  /** Frames between one word starting and the next. 0 means they arrive together. */
+  delayFrames: number;
+  /** Which end goes first. Defaults to forward (reading order). */
+  order?: 'forward' | 'reverse';
+};
+
+/**
+ * V8.2 — a background that changes during a scene.
+ *
+ * Flarent could already cut the field *between* scenes, and RAPID and STACK cut
+ * it on their own internal beats. What it could not do was hold one piece of
+ * type still while the field strobed underneath it — a staple of the form, and
+ * previously only expressible by duplicating the scene once per flip, which
+ * makes the timeline unreadable and the text impossible to edit in one place.
+ *
+ * The content is untouched by this: only the field alternates, on a fixed frame
+ * interval, deterministically. `times` bounds it when the effect should stop
+ * partway through rather than run to the end of the scene.
+ */
+export type BackgroundMotion = {
+  /** Only alternation for now — between the scene's field and its palette partner. */
+  mode: 'alternate';
+  /** Frames each field is held for. Must be at least 1. */
+  everyFrames: number;
+  /** How many flips to make. Omitted means "for the whole scene". */
+  times?: number;
+};
+
+/**
  * One independently positioned, sized and animated piece of type.
  *
  * A scene holds a list of these. Everything except `text` is optional: role
@@ -101,10 +178,34 @@ export type SceneElement = {
   styleConfig?: VisualStyleConfig;
   /** Overrides the role's default size. */
   size?: SizePreset;
+  /**
+   * Fit this element to an exact share of the frame width. Overrides `size`.
+   * Never clips: the measured ink lands on `maxWidth` and stops there.
+   */
+  fit?: TextFit;
+  /**
+   * Which of the two house faces this element is set in. `accent` is the serif
+   * italic. Defaults to the scene's `fontRole`, then to `primary`.
+   */
+  fontRole?: FontRole;
   /** Overrides the composition's default placement. */
   position?: PositionPreset;
   /** Overrides the scene's style for this element alone. */
   animation?: AnimationStyle;
+  /**
+   * V8.2 — how this element *leaves*, as an animation style.
+   *
+   * Exits already existed but were implied: a scene's type left in the manner of
+   * the style it arrived in. This makes the choice explicit and separable, so a
+   * line can punch in and slide out — and `none` means it does not leave at all,
+   * it simply cuts.
+   *
+   * Defaults to the scene's `exit`, then to the element's own animation, which
+   * is exactly the behaviour every pre-V8.2 project already had.
+   */
+  exit?: AnimationStyle;
+  /** V8.2 — words enter this many frames apart. Overrides the scene's stagger. */
+  stagger?: WordStagger;
   /** Text alignment *within* the element. Defaults to match its position. */
   align?: Alignment;
   /** Words promoted inside this element. Rarely needed — the role does this job. */
@@ -128,6 +229,24 @@ export type SceneElement = {
   scale?: number;
   /** Seconds to hold before this element enters. */
   delay?: number;
+  /**
+   * V8 — how long this element's entrance takes, in **frames**.
+   *
+   * Each style has a measured entrance length (`ENTER_SECONDS`) which is right
+   * for the pacing it was designed at. It stops being right at the extremes: a
+   * seven-frame scene under PUNCH spends most of its life still arriving, which
+   * makes fast cutting impossible.
+   *
+   * This overrides the style's own length while leaving its *curve* alone — the
+   * same easing, the same channels, the same planner. It is emphatically not a
+   * keyframe: it says how long, never what happens in between.
+   *
+   * Frames rather than seconds because the reason to reach for it is always
+   * frame-accurate cutting, and 2 is a clearer thing to write than 0.0667.
+   * Clamped to the element's available window at plan time, so asking for a
+   * longer entrance than the scene can hold shortens it rather than overrunning.
+   */
+  enterFrames?: number;
   /** Entrance origin. An `offscreen-*` value throws the element in from there. */
   from?: PositionPreset;
   /**
@@ -261,6 +380,37 @@ export type Scene = {
    * Named `fontSize` to match the documented scene schema.
    */
   fontSize?: number;
+  /**
+   * V8.2 — how this scene's type leaves, as an animation style.
+   *
+   * Defaults to `style`, which is what every existing project does. `none`
+   * removes the exit entirely and makes the boundary a hard cut.
+   */
+  exit?: AnimationStyle;
+  /**
+   * V8.2 — how long the exit takes, in frames.
+   *
+   * Overrides the per-style overlap length. Still bounded by a third of the
+   * *incoming* scene, because a seam that eats the next scene is a bug however
+   * deliberately it was asked for.
+   */
+  exitFrames?: number;
+  /** V8.2 — words enter this many frames apart. Inherited by elements. */
+  stagger?: WordStagger;
+  /** V8.2 — alternate the field during the scene while the type holds. */
+  backgroundMotion?: BackgroundMotion;
+  /** Scene-wide fit, inherited by elements that do not set their own. */
+  fit?: TextFit;
+  /** Scene-wide face, inherited by elements that do not set their own. */
+  fontRole?: FontRole;
+  /**
+   * V8 — the scene's default entrance length in frames.
+   *
+   * Every element that does not set its own `enterFrames` inherits this, which
+   * is what makes "cut this whole scene fast" one field rather than one per
+   * line. Element beats scene, scene beats the style's measured default.
+   */
+  enterFrames?: number;
   /** SLIDE only — which edge the type travels in from. */
   direction?: SlideDirection;
   /** RAPID only — flip the background on every beat (the reference behaviour). */
@@ -360,6 +510,13 @@ export type FlarentVideoProps = {
   palette?: PaletteName;
   /** Per-project field colours, e.g. an imported script's backgroundPalette. */
   fields?: Partial<Record<BackgroundName, string>>;
+  /**
+   * V8 — explicit ink per field. Where `fields` sets the ground, this sets the
+   * type on it, and unlike the derived ink it is honoured exactly as given.
+   */
+  ink?: Partial<Record<BackgroundName, string>>;
+  /** V8 — the project accent, used as the default fill for graphic objects. */
+  accent?: string;
   /** A static image over the whole reel. Scenes may opt out individually. */
   overlay?: OverlayImage;
   /**

@@ -42,11 +42,14 @@ import { ExportBar } from './components/editor/ExportBar';
 import { ImportPanel } from './components/editor/ImportPanel';
 import { ExtractPanel } from './components/editor/ExtractPanel';
 import { Logo } from './components/editor/Logo';
+import { Group } from './components/editor/Group';
 import { Transport } from './components/editor/Transport';
 import { ImageStage } from './components/editor/ImageStage';
 import { OverlayControls } from './components/editor/OverlayControls';
 import { OverlayStage } from './components/editor/OverlayStage';
 import { AudioControls } from './components/editor/AudioControls';
+import { PaletteControls } from './components/editor/PaletteControls';
+import { PhraseBuildPanel } from './components/editor/PhraseBuildPanel';
 import type { ProjectAudio } from './types/audio';
 import { ObjectList } from './components/editor/ObjectList';
 import { ObjectInspector } from './components/editor/ObjectInspector';
@@ -81,6 +84,10 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
    */
   const [format, setFormat] = useState<CanvasFormat>(initial.format);
   const [fields, setFields] = useState<FieldOverrides>(initial.fields);
+  /* V8 — explicit ink per field, and the project accent. Both empty/null by
+     default, which is what keeps every pre-V8 project rendering identically. */
+  const [ink, setInk] = useState<FieldOverrides>(initial.ink);
+  const [accent, setAccent] = useState<string | null>(initial.accent);
   const [title, setTitle] = useState<string | null>(initial.title);
   const [overlay, setOverlay] = useState<OverlayImage | null>(initial.overlay);
   /**
@@ -105,7 +112,21 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [saved, setSaved] = useState(true);
+  /**
+   * Which half of the inspector is showing.
+   *
+   * The column used to carry eight sections at once, four of which described
+   * the *project* (palette, static image, audio, phrase build) and had nothing
+   * to do with whatever was selected — so a scene's text box and the reel's
+   * colour scheme sat in the same scroll, 3,700px deep. Splitting them is not a
+   * new capability; it is the same panels, told apart by what they are about.
+   *
+   * Deliberately *not* persisted. It is a view state, not a project state: it
+   * has no business in the auto-save or in the extracted JSON.
+   */
+  const [inspectorTab, setInspectorTab] = useState<'scene' | 'project'>('scene');
   const playerRef = useRef<PlayerRef | null>(null);
+  const inspectorRef = useRef<HTMLDivElement | null>(null);
 
   const selected = scenes.find((scene) => scene.id === selectedId) ?? null;
   const frames = totalFrames(scenes, CANVAS.fps);
@@ -138,7 +159,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
    */
   useEffect(() => {
     setSaved(false);
-    const snapshot = { scenes, palette, format, fields, overlay, audio, title, selectedId };
+    const snapshot = { scenes, palette, format, fields, ink, accent, overlay, audio, title, selectedId };
     const timer = window.setTimeout(() => {
       setSaved(saveProject(snapshot));
     }, 400);
@@ -153,7 +174,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
       window.removeEventListener('visibilitychange', flush);
       window.removeEventListener('pagehide', flush);
     };
-  }, [scenes, palette, format, fields, overlay, audio, title, selectedId]);
+  }, [scenes, palette, format, fields, ink, accent, overlay, audio, title, selectedId]);
 
   // Escape is the other half of clicking away — reachable when the object
   // fills the frame and there is no empty canvas left to click.
@@ -179,6 +200,16 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
   useEffect(() => {
     if (!selectedId && scenes.length > 0) setSelectedId(scenes[0].id);
   }, [scenes, selectedId]);
+
+  /**
+   * The two tabs share one scroll container, so without this you arrive at the
+   * project tab parked wherever the scene tab happened to be — which is how
+   * clicking the audio lane could land you on the palette. Each tab opens at
+   * its own top.
+   */
+  useEffect(() => {
+    inspectorRef.current?.scrollTo({ top: 0 });
+  }, [inspectorTab]);
 
   // Objects belong to a scene, so a scene change drops the object selection —
   // otherwise the inspector would keep editing an object that is no longer on
@@ -353,6 +384,8 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
       setScenes(next);
       setSelectedId(null);
       setFields({});
+      setInk({});
+      setAccent(null);
       setTitle(null);
       seek(0);
     },
@@ -369,6 +402,8 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
       setPalette(project.palette);
       setFormat(project.format);
       setFields(project.fields);
+      setInk(project.ink);
+      setAccent(project.accent);
       setOverlay(project.overlay);
       setAudio(project.audio);
       setTitle(project.title);
@@ -426,11 +461,20 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
           onChange={(event) => setTitle(event.target.value || null)}
         />
 
+        {/*
+          The bar carries what the reel *is* — its name, its shape, its colours
+          and its size — grouped so the three tiers read as three tiers rather
+          than as one run of controls. What you can *do* to a reel moved to the
+          project tab; the two were never the same kind of thing.
+        */}
+        <span className="topbar-rule" aria-hidden />
+
         <select
           className="preset"
           defaultValue="reference"
           onChange={(event) => loadPreset(event.target.value)}
-          title="Load a length preset"
+          title="Replace this reel with a Reference Reel"
+          aria-label="Start from a reference reel"
         >
           {PRESETS.map((preset) => (
             <option key={preset.id} value={preset.id}>
@@ -491,6 +535,30 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
       </header>
 
       <div className="stage">
+        {/*
+          The reel, as navigation.
+
+          Scenes used to sit at the top of the inspector, which meant choosing
+          what to work on and working on it competed for the same 400px of
+          scroll — and the scene list was capped at 244px so that it would not
+          push the controls out of reach, which is the compromise you make when
+          two jobs share one column. In a rail it has the height it wants and
+          the inspector is left to do one thing.
+        */}
+        <aside className="rail">
+          <SceneList
+            scenes={scenes}
+            palette={palette}
+            fields={fields}
+            selectedId={selectedId}
+            onSelect={(id) => selectScene(id)}
+            onAdd={addScene}
+            onDuplicate={duplicateScene}
+            onDelete={deleteScene}
+            onMove={moveScene}
+          />
+        </aside>
+
         <div className="canvas-pane">
           {/*
             The CSS default is portrait (9/16); landscape overrides it inline
@@ -507,6 +575,8 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
               palette={palette}
               format={format}
               fields={fields}
+              ink={ink}
+              accent={accent}
               overlay={overlay}
               audio={audio}
               playerRef={playerRef}
@@ -567,67 +637,186 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
         </div>
 
         <aside className="side-pane">
-          <SceneList
-            scenes={scenes}
-            palette={palette}
-            fields={fields}
-            selectedId={selectedId}
-            onSelect={(id) => selectScene(id)}
-            onAdd={addScene}
-            onDuplicate={duplicateScene}
-            onDelete={deleteScene}
-            onMove={moveScene}
-          />
-          <SceneEditor
-            scene={selected}
-            palette={palette}
-            hasOverlay={overlay !== null}
-            onChange={updateScene}
-            canvas={canvas}
-          />
           {/*
-            V6 — objects live below the scene's own controls: a scene is still
-            primarily its type, and the graphics sit on top of it.
+            Two contexts, not eight sections. "Scene" is whatever is selected;
+            "Project" is everything true of the whole reel. Both are the same
+            panels that were here before — this only decides which of them are
+            on screen at once.
           */}
-          <ObjectList
-            objects={selected?.objects}
-            selectedId={selectedObjectId}
-            onSelect={setSelectedObjectId}
-            onAdd={addSceneObject}
-            onDuplicate={duplicateSceneObject}
-            onDelete={deleteObject}
-            onReorder={reorderSceneObject}
-          />
-          <ObjectInspector
-            object={
-              selectedObjectId ? findObject(selected?.objects, selectedObjectId) : null
-            }
-            ink={themeFor(selected?.background ?? 'green', palette, fields).ink}
-            onChange={patchObject}
-            targets={flattenObjects(selected?.objects).map(({ object }) => ({
-              id: object.id,
-              label: objectTitle(object),
-            }))}
-          />
-          <OverlayControls
-            overlay={overlay}
-            scenes={scenes}
-            onChange={setOverlay}
-          />
-          {/*
-            V7 — project-level, beside the overlay rather than inside a scene.
-            `onSeekSeconds` drives the same playhead the transport does; there is
-            no second playback state anywhere in the editor.
-          */}
-          <AudioControls
-            audio={audio}
-            videoSeconds={seconds}
-            onChange={setAudio}
-            onSeekSeconds={(s) => seek(Math.round(s * CANVAS.fps))}
-          />
+          <div className="inspector-tabs" role="tablist" aria-label="Inspector">
+            {(['scene', 'project'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={inspectorTab === tab}
+                className={`inspector-tab${inspectorTab === tab ? ' is-on' : ''}`}
+                onClick={() => setInspectorTab(tab)}
+              >
+                {tab === 'scene' ? 'Scene' : 'Project'}
+              </button>
+            ))}
+          </div>
+
+          <div className="inspector-body" ref={inspectorRef}>
+            {inspectorTab === 'scene' ? (
+              <>
+                <SceneEditor
+                  onAddScene={addScene}
+                  scene={selected}
+                  palette={palette}
+                  fields={fields}
+                  ink={ink}
+                  accent={accent}
+                  hasOverlay={overlay !== null}
+                  onChange={updateScene}
+                  canvas={canvas}
+                />
+                {/*
+                  V6 — objects live below the scene's own controls: a scene is
+                  still primarily its type, and the graphics sit on top of it.
+                */}
+                <ObjectList
+                  objects={selected?.objects}
+                  selectedId={selectedObjectId}
+                  onSelect={setSelectedObjectId}
+                  onAdd={addSceneObject}
+                  onDuplicate={duplicateSceneObject}
+                  onDelete={deleteObject}
+                  onReorder={reorderSceneObject}
+                />
+                <ObjectInspector
+                  object={
+                    selectedObjectId
+                      ? findObject(selected?.objects, selectedObjectId)
+                      : null
+                  }
+                  ink={themeFor(selected?.background ?? 'green', palette, fields).ink}
+                  onChange={patchObject}
+                  targets={flattenObjects(selected?.objects).map(({ object }) => ({
+                    id: object.id,
+                    label: objectTitle(object),
+                  }))}
+                />
+              </>
+            ) : (
+              <>
+                {/*
+                  V7 — the audio track. Its entry point is the lane it already
+                  draws on the timeline, which is where you notice it; this is
+                  where it is edited. `onSeekSeconds` drives the same playhead
+                  the transport does — there is still exactly one clock.
+                */}
+                <AudioControls
+                  audio={audio}
+                  videoSeconds={seconds}
+                  onChange={setAudio}
+                  onSeekSeconds={(s) => seek(Math.round(s * CANVAS.fps))}
+                />
+
+                <OverlayControls
+                  overlay={overlay}
+                  scenes={scenes}
+                  onChange={setOverlay}
+                />
+
+                {/*
+                  V8.3 — a faster way to start a run of scenes. It writes
+                  ordinary scenes through the same `setScenes` every other edit
+                  uses, so there is nothing special about what it produces.
+                */}
+                <PhraseBuildPanel
+                  onBuild={(built, replace) => {
+                    setScenes((current) => (replace ? built : [...current, ...built]));
+                    setSelectedId(built[0]?.id ?? null);
+                    seek(0);
+                    // The scenes it makes are the thing you want to look at
+                    // next, and they are not on this tab.
+                    setInspectorTab('scene');
+                  }}
+                />
+
+                {/* V8 — project colours. */}
+                <PaletteControls
+                  palette={palette}
+                  fields={fields}
+                  ink={ink}
+                  accent={accent}
+                  onFields={setFields}
+                  onInk={setInk}
+                  onAccent={setAccent}
+                />
+
+                {/*
+                  Moving a whole reel in or out, and starting from a different
+                  one. These were in the footer, which the redesign gives over
+                  to playback and export; they are project-level actions and
+                  this is the project tab.
+                */}
+                <Group title="Project file" defaultOpen={false}>
+                    <div className="field">
+                      <label htmlFor="preset-select">Start from a reference reel</label>
+                      <select
+                        id="preset-select"
+                        className="text-input"
+                        defaultValue="reference"
+                        onChange={(event) => loadPreset(event.target.value)}
+                      >
+                        {PRESETS.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.label} — {preset.note}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="hint">
+                        Replaces every scene in this reel. Extract the JSON first
+                        if you want to keep what is here.
+                      </p>
+                    </div>
+
+                    <div className="field">
+                      <label>This reel</label>
+                      <div className="chips">
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setImportOpen(true)}
+                        >
+                          Import JSON
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setExtractOpen(true)}
+                        >
+                          Extract JSON
+                        </button>
+                        <button
+                          type="button"
+                          className="btn danger"
+                          onClick={resetProject}
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <p className="hint">
+                        Extract and Import are inverses — whatever comes out of
+                        one goes back into the other unchanged.
+                      </p>
+                    </div>
+                </Group>
+              </>
+            )}
+          </div>
         </aside>
       </div>
 
+      {/*
+        Playback and export, and nothing else. Import / Extract / Reset used to
+        sit between the transport and the export button, which put three
+        document actions in the middle of the one row that is about watching
+        the thing play. They are on the project tab now.
+      */}
       <footer className="footer">
         <Timeline
           scenes={scenes}
@@ -638,6 +827,7 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
           onSelect={setSelectedId}
           onSeek={seek}
           audio={audio}
+          onOpenAudio={() => setInspectorTab('project')}
         />
         <div className="footer-row">
           <Transport
@@ -647,43 +837,14 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
             onSeek={seek}
             onTogglePlay={togglePlay}
           />
-          {/*
-            Project-level actions. They live beside Export because that is what
-            they are — moving a whole reel in or out — and because the top bar
-            is for what the reel *is*, not what you can do to it.
-          */}
-          <div className="project-actions">
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setImportOpen(true)}
-              title="Import a JSON script"
-            >
-              Import JSON
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setExtractOpen(true)}
-              title="Extract the current reel as JSON"
-            >
-              Extract JSON
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={resetProject}
-              title="Discard the saved project and reload the demo reel"
-            >
-              Reset
-            </button>
-          </div>
 
           <ExportBar
             scenes={scenes}
             palette={palette}
             format={format}
             fields={fields}
+            ink={ink}
+            accent={accent}
             overlay={overlay}
             audio={audio}
             saved={saved}
@@ -697,6 +858,8 @@ export const Editor: React.FC<{ initial: Project }> = ({ initial }) => {
         title={title}
         format={format}
         fields={fields}
+        ink={ink}
+        accent={accent}
         overlay={overlay}
         audio={audio}
         onClose={() => setExtractOpen(false)}
