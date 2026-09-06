@@ -138,6 +138,19 @@ export {
   audioSelectionLength,
   defaultSelection,
 } from ${JSON.stringify(path.join(SRC, 'types/audio'))};
+
+/*
+ * Browser auto-save. NOT for the MCP tools — MCP has its own store and must
+ * never touch localStorage. These are here only so \`test/persistence.test.mjs\`
+ * can exercise the real save/restore path in Node, which is what stops a field
+ * being added to \`Scene\` and forgotten in the restore whitelist. That has
+ * happened once already: V6 objects were dropped on every reload.
+ */
+export {
+  saveProject,
+  loadProject,
+  clearProject,
+} from ${JSON.stringify(path.join(SRC, 'utils/persistence'))};
 `;
 
 /**

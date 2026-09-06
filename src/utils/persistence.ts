@@ -8,6 +8,13 @@
  * Restore is defensive: a payload from an older build, or one that has been
  * corrupted, is discarded rather than crashing the editor into a blank screen.
  * Losing an auto-save is annoying; failing to start is worse.
+ *
+ * **Restore is a whitelist, and that is the thing to remember when adding a
+ * field to `Scene`.** `saveProject` writes whatever it is given, but
+ * `sanitiseScene` rebuilds each scene field by field, so anything not named
+ * here is silently dropped on the next reload. V6's `objects` went un-named for
+ * two versions and every graphic object was lost on refresh;
+ * `test/persistence.test.mjs` now guards the whole surface against a repeat.
  */
 
 import type {
@@ -28,6 +35,12 @@ import type {
   TextRole,
   WordStagger,
 } from '../types/scene';
+import type {
+  CursorStop,
+  ObjectKind,
+  SceneObject,
+  StateChange,
+} from '../types/object';
 import type { FieldOverrides } from './typography';
 import type { ProjectAudio } from '../types/audio';
 import { VISUAL_STYLE_NAMES } from './visualStyle';
@@ -180,6 +193,8 @@ const sanitiseElement = (raw: unknown, index: number): SceneElement | null => {
   if (elementStagger) element.stagger = elementStagger;
   if (raw.fontRole === 'accent' || raw.fontRole === 'primary')
     element.fontRole = raw.fontRole;
+  const elementWordColors = sanitiseWordColors(raw.wordColors);
+  if (elementWordColors) element.wordColors = elementWordColors;
 
   // Manual coordinates only count as a pair — one of the two would place the
   // element somewhere neither the author nor the composition asked for.
@@ -192,6 +207,126 @@ const sanitiseElement = (raw: unknown, index: number): SceneElement | null => {
 
   return element;
 };
+
+/**
+ * Per-word colour: a map of word → CSS colour.
+ *
+ * V8 added this to `Scene` and `SceneElement`, to the planner and to the
+ * importer, and to neither sanitiser — so a coloured word came back plain on
+ * every reload, exactly as V6's objects came back missing. Found by
+ * `test/persistence.test.mjs` walking the whole model rather than by anyone
+ * noticing their colours had gone.
+ *
+ * Keys are the renderer's own lookup keys, so they are taken as given; only the
+ * shape is checked. An empty map is dropped rather than restored, matching how
+ * `WordColors` serialises "nothing coloured".
+ */
+const sanitiseWordColors = (raw: unknown): Record<string, string> | undefined => {
+  if (!isRecord(raw)) return undefined;
+  const colors: Record<string, string> = {};
+  for (const [word, value] of Object.entries(raw)) {
+    if (typeof value === 'string' && value.trim() !== '') colors[word] = value;
+  }
+  return Object.keys(colors).length > 0 ? colors : undefined;
+};
+
+/**
+ * V6 objects.
+ *
+ * These were missing from this file entirely until now, which meant every card,
+ * button, shape, icon, image, logo, cursor and group was lost the moment the
+ * editor reloaded. The save wrote them — `saveProject` stringifies the whole
+ * project — but `sanitiseScene` is a whitelist, and nobody added `objects` to
+ * it when V6 added them everywhere else. Reload, and the editor restored a
+ * scene with its type intact and its graphics gone.
+ *
+ * **Structural rather than exhaustive, on purpose.** The other sanitisers in
+ * this file check every field against its own vocabulary, which is right for a
+ * flat record of enums. An object is not that: it is a recursive tree with
+ * eight variants, a surface, a label, a motion recipe and a state table, and
+ * validating each leaf here would mean a second copy of the object model that
+ * drifts from `types/object.ts` the first time either moves — which is the
+ * exact failure that caused this bug.
+ *
+ * So this checks what the renderer would actually crash on — the discriminant,
+ * the box, and the shape of anything it iterates — and passes the rest through.
+ * A bad `shadow` value paints no shadow; a bad `x` paints nothing anywhere.
+ */
+const OBJECT_KINDS: ObjectKind[] = [
+  'shape', 'image', 'icon', 'card', 'button', 'logo', 'cursor', 'group',
+];
+
+/** Deep enough for a card holding a group holding buttons, and no deeper. A
+    cycle or a corrupt payload must not be able to exhaust the stack. */
+const MAX_OBJECT_DEPTH = 6;
+
+const sanitiseStops = (raw: unknown): CursorStop[] =>
+  Array.isArray(raw)
+    ? raw
+        .filter(isRecord)
+        .filter(
+          (stop) =>
+            num(stop.x) !== undefined &&
+            num(stop.y) !== undefined &&
+            num(stop.at) !== undefined,
+        )
+        .map((stop) => stop as unknown as CursorStop)
+    : [];
+
+const sanitiseObject = (
+  raw: unknown,
+  index: number,
+  depth: number,
+): SceneObject | null => {
+  if (!isRecord(raw)) return null;
+  if (!OBJECT_KINDS.includes(raw.type as ObjectKind)) return null;
+
+  // The box is the one thing every kind needs and the renderer cannot default.
+  const x = num(raw.x);
+  const y = num(raw.y);
+  const width = num(raw.width);
+  const height = num(raw.height);
+  if (x === undefined || y === undefined) return null;
+  if (width === undefined || height === undefined) return null;
+  if (width <= 0 || height <= 0) return null;
+
+  const object = {
+    ...raw,
+    id: typeof raw.id === 'string' && raw.id ? raw.id : `obj-${depth}-${index}`,
+    x,
+    y,
+    width,
+    height,
+  } as unknown as SceneObject;
+
+  // The two things the renderer iterates. A non-array here is a crash, not a
+  // missing decoration, so both are normalised rather than passed through.
+  if (object.type === 'cursor') {
+    object.stops = sanitiseStops(raw.stops);
+  }
+  if (object.type === 'card' || object.type === 'group') {
+    const children =
+      depth < MAX_OBJECT_DEPTH ? sanitiseObjects(raw.children, depth + 1) : [];
+    if (children.length > 0) object.children = children;
+    else delete (object as { children?: SceneObject[] }).children;
+  }
+  if (Array.isArray(raw.states)) {
+    object.states = raw.states.filter(
+      (state) => isRecord(state) && num(state.at) !== undefined && typeof state.to === 'string',
+    ) as StateChange[];
+  } else {
+    delete (object as { states?: StateChange[] }).states;
+  }
+
+  return object;
+};
+
+function sanitiseObjects(raw: unknown, depth = 0): SceneObject[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry, index) => sanitiseObject(entry, index, depth))
+    .filter((object): object is SceneObject => object !== null);
+}
 
 /**
  * Keep only scenes the engine can actually render. A single bad entry should
@@ -262,6 +397,12 @@ const sanitiseScene = (raw: unknown): Scene | null => {
   if (isRecord(raw.image) && typeof raw.image.src === 'string') {
     scene.image = raw.image as unknown as Scene['image'];
   }
+  /* V6 — the scene's graphic objects. Omitted entirely when there are none, so
+     a scene that never had any serialises exactly as it did before. */
+  const objects = sanitiseObjects(raw.objects);
+  if (objects.length > 0) scene.objects = objects;
+  const sceneWordColors = sanitiseWordColors(raw.wordColors);
+  if (sceneWordColors) scene.wordColors = sceneWordColors;
 
   return scene;
 };
