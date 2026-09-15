@@ -11,3 +11,9 @@ public/uploads/*
 # analysis cache and idempotency records. All of it is derived or personal —
 # projects are a user's own work, and the caches rebuild themselves.
 .flarent/
+
+# Render-server runtime state: uploaded assets, the persisted job table and the
+# symlink tree handed to Remotion's bundler. Personal or derived, never source.
+# In production this lives outside the checkout entirely (FLARENT_UPLOAD_DIR,
+# FLARENT_OUT_DIR, FLARENT_DATA_DIR).
+.flarent-data/

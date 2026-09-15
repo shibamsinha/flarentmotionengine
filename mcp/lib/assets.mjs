@@ -27,10 +27,23 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+import { config } from '../../server/config.mjs';
 import { ROOT } from './engine.mjs';
 import { validationError } from './errors.mjs';
 
-const UPLOAD_DIR = path.join(ROOT, 'public', 'uploads');
+/**
+ * Where uploads live.
+ *
+ * Read from the render server's own configuration rather than restated here, so
+ * the two processes cannot disagree about a path — MCP writing an asset the
+ * renderer would not find is exactly the failure this indirection prevents.
+ * Uploads moved out of `public/` during production hardening; `FLARENT_UPLOAD_DIR`
+ * moves them again, and both processes follow it together.
+ */
+const UPLOAD_DIR = config.uploadDir;
+
+/** Assets that ship with the checkout and are addressed relative to `public/`. */
+const PUBLIC_DIR = path.join(ROOT, 'public');
 
 /** The same vocabularies the render server accepts, for the same reasons. */
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.oga', '.weba', '.flac']);
@@ -132,8 +145,15 @@ export const discardAsset = async (asset) => {
 /**
  * The absolute path of an asset the document refers to.
  *
- * Rejects anything that escapes `public/`, so a hand-edited or model-supplied
- * `src` cannot walk up into the rest of the disk.
+ * Two roots, because uploads no longer live under `public/`:
+ *
+ *   uploads/<name>  ->  <uploadDir>/<name>     runtime user assets
+ *   <anything else> ->  <root>/public/<…>      assets shipped with the checkout
+ *
+ * Both are confined the same way — resolve, then require the result to sit
+ * under its root — so a hand-edited or model-supplied `src` cannot walk up into
+ * the rest of the disk. The containment check is what matters and it is applied
+ * identically to both, rather than one of them being trusted.
  */
 export const resolveAssetPath = (src) => {
   if (typeof src !== 'string' || src.trim() === '') {
@@ -147,15 +167,19 @@ export const resolveAssetPath = (src) => {
     );
   }
 
-  const publicDir = path.join(ROOT, 'public');
-  const absolute = path.resolve(publicDir, src.replace(/^\/+/, ''));
-  if (!absolute.startsWith(publicDir + path.sep)) {
+  const relative = src.replace(/^\/+/, '');
+  const inUploads = relative.startsWith('uploads/');
+  const root = inUploads ? UPLOAD_DIR : PUBLIC_DIR;
+  const rest = inUploads ? relative.slice('uploads/'.length) : relative;
+
+  const absolute = path.resolve(root, rest);
+  if (absolute !== root && !absolute.startsWith(root + path.sep)) {
     throw validationError('That audio path points outside the project.', { src });
   }
   if (!fs.existsSync(absolute)) {
     throw validationError(
       `The audio file ${src} is missing from the project. It may have been deleted from ` +
-        'public/uploads; re-add it with add_audio.',
+        'the upload directory; re-add it with add_audio.',
       { src },
     );
   }

@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import { after, before, describe, it } from 'node:test';
 
 import { loadEngine } from '../mcp/lib/engine.mjs';
-import { health, renderStill } from '../mcp/lib/render-client.mjs';
+import { health, outPath, renderStill } from '../mcp/lib/render-client.mjs';
 import { inkColumns, pixelAt, readPng } from './png.mjs';
 
 let engine;
@@ -53,14 +53,17 @@ const still = async (scenes, frame, options = {}) => {
     ...(options.accent ? { accent: options.accent } : {}),
     frame,
   });
-  rendered.push(result.path);
-  const bytes = fs.readFileSync(result.path);
+  // The server returns a filename, not a path — absolute paths are no longer
+  // sent to any client. Tests resolve it the same way MCP does.
+  const file = outPath(result.filename);
+  rendered.push(file);
+  const bytes = fs.readFileSync(file);
   return {
-    path: result.path,
+    path: file,
     hash: createHash('sha1').update(bytes).digest('hex'),
     width: result.width,
     height: result.height,
-    png: readPng(result.path),
+    png: readPng(file),
   };
 };
 

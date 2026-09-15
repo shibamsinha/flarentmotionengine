@@ -9,6 +9,7 @@
     "dev:app": "vite",
     "dev:render": "node server/render-server.mjs",
     "build": "vite build",
+    "start": "node server/render-server.mjs",
     "preview": "vite preview",
     "studio": "remotion studio src/remotion/index.ts",
     "typecheck": "tsc --noEmit",

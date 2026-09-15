@@ -13,6 +13,9 @@
  * SERVICE_UNAVAILABLE naming the command to start it.
  */
 
+import nodePath from 'node:path';
+
+import { config } from '../../server/config.mjs';
 import { renderFailed, unavailable, validationError } from './errors.mjs';
 
 const PORT = Number(process.env.FLARENT_RENDER_PORT ?? 5174);
@@ -20,6 +23,31 @@ const BASE = process.env.FLARENT_RENDER_URL ?? `http://localhost:${PORT}`;
 
 /** Generous, because a first render downloads a browser and builds a bundle. */
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+/**
+ * The absolute path of a rendered file.
+ *
+ * The server used to return this in the response body and no longer does —
+ * absolute paths are reconnaissance for a remote client, and the render server
+ * is now a public-facing process. MCP is not a remote client: it runs on the
+ * same machine, reading the same `FLARENT_OUT_DIR`, so it resolves the path
+ * itself from the filename the server does return.
+ *
+ * The one way this can be wrong is a render server started with a different
+ * `FLARENT_OUT_DIR` than this process sees. The callers check that the file
+ * exists and say so plainly rather than failing on a bare ENOENT.
+ */
+export const outPath = (filename) =>
+  nodePath.join(config.outDir, nodePath.basename(String(filename ?? '')));
+
+/**
+ * Credentials, when the deployment has a gate.
+ *
+ * Only ever sent to `FLARENT_RENDER_URL`, which is localhost unless deliberately
+ * pointed elsewhere. Unset in ordinary local use, where the server is open.
+ */
+const authHeaders = () =>
+  config.accessToken ? { Authorization: `Bearer ${config.accessToken}` } : {};
 
 const call = async (path, { method = 'GET', body, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) => {
   const controller = new AbortController();
@@ -30,7 +58,11 @@ const call = async (path, { method = 'GET', body, timeoutMs = DEFAULT_TIMEOUT_MS
     response = await fetch(`${BASE}${path}`, {
       method,
       signal: controller.signal,
-      ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      headers: {
+        ...authHeaders(),
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
     });
   } catch (error) {
     if (error.name === 'AbortError') {

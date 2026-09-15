@@ -29,6 +29,7 @@ import {
   BASE,
   cancelRender,
   health,
+  outPath,
   renderPayload,
   renderStatus,
   renderContactSheet,
@@ -86,14 +87,17 @@ export const registerRenderTools = (server, ctx) => {
 
       const result = await renderStill({ ...renderPayload(stored.project), frame });
 
-      const bytes = await fsp.readFile(result.path);
+      // The server returns a filename; the absolute path is resolved locally,
+      // because the render server no longer hands paths to any client.
+      const file = outPath(result.filename);
+      const bytes = await fsp.readFile(file);
       if (bytes.length > MAX_INLINE_IMAGE_BYTES) {
         // Better to say where the file is than to push megabytes of base64
         // through the model's context.
         return ok({
           rendered: true,
           tooLargeToInline: true,
-          path: result.path,
+          path: file,
           bytes: bytes.length,
           frame: result.frame,
           note: 'The frame rendered but is too large to return inline. Open the file directly.',
@@ -220,7 +224,8 @@ export const registerRenderTools = (server, ctx) => {
         ...(args.columns ? { columns: args.columns } : {}),
       });
 
-      const bytes = await fsp.readFile(sheet.path);
+      const file = outPath(sheet.filename);
+      const bytes = await fsp.readFile(file);
       const cells = sheet.cells.map((cell, i) => ({
         ...cell,
         atSecond: round(cell.frame / canvas.fps),
@@ -231,7 +236,7 @@ export const registerRenderTools = (server, ctx) => {
         return ok({
           rendered: true,
           tooLargeToInline: true,
-          path: sheet.path,
+          path: file,
           bytes: bytes.length,
           cells,
           note: 'The sheet rendered but is too large to return inline. Open the file directly.',
