@@ -18,7 +18,6 @@
  */
 
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -47,7 +46,6 @@ export const DATA_DIR = process.env.FLARENT_MCP_HOME
  * across test runs saves rebuilding a bundle that cannot differ.
  */
 const CACHE_DIR = path.join(ROOT, '.flarent', 'cache');
-const ESBUILD = path.join(ROOT, 'node_modules', '.bin', 'esbuild');
 
 /**
  * What the bundle re-exports. Everything the MCP layer is allowed to know about
@@ -211,21 +209,19 @@ export const loadEngine = async () => {
        * React comes along because `presets.ts` reaches the scene types, exactly
        * as it does for the regression gate. Nothing renders — these are pure
        * data functions — but the bundle has to resolve the imports.
+       *
+       * esbuild's own API rather than `node_modules/.bin/esbuild`: on Windows
+       * that path is only an `esbuild.cmd` shim, which `execFileSync` cannot run.
        */
-      execFileSync(
-        ESBUILD,
-        [
-          entry,
-          '--bundle',
-          '--platform=node',
-          '--format=cjs',
-          '--loader:.ts=ts',
-          '--loader:.tsx=tsx',
-          '--log-level=error',
-          `--outfile=${bundlePath}`,
-        ],
-        { stdio: ['ignore', 'ignore', 'pipe'] },
-      );
+      require('esbuild').buildSync({
+        entryPoints: [entry],
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        loader: { '.ts': 'ts', '.tsx': 'tsx' },
+        logLevel: 'error',
+        outfile: bundlePath,
+      });
     } finally {
       await fsp.rm(work, { recursive: true, force: true });
     }

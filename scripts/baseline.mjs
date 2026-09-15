@@ -41,7 +41,6 @@
  */
 
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -254,12 +253,17 @@ export const parseFile = (source: string, label: string) => {
 );
 
 const bundle = path.join(work, 'entry.cjs');
-execFileSync(
-  path.join(ROOT, 'node_modules/.bin/esbuild'),
-  [entry, '--bundle', '--platform=node', '--format=cjs', `--outfile=${bundle}`,
-   '--log-level=error'],
-  { stdio: 'inherit', cwd: ROOT },
-);
+// esbuild's API, not `node_modules/.bin/esbuild`, which is only a `.cmd` shim on
+// Windows that execFileSync cannot run.
+require('esbuild').buildSync({
+  entryPoints: [entry],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  outfile: bundle,
+  logLevel: 'error',
+  absWorkingDir: ROOT,
+});
 
 const mod = require(bundle);
 const sha = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);

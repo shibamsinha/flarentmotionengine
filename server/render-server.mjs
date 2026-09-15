@@ -164,20 +164,36 @@ const getBundle = async (onProgress) => {
     onProgress(1);
     return bundleCache.serveUrl;
   }
+  /*
+   * Remotion ignores `symlinkPublicDir` on Windows and copies instead, and its
+   * copy recreates each link inside `remotionPublicDir` as a plain directory
+   * symlink — which an ordinary Windows account may not create (EPERM). So on
+   * Windows it copies an empty folder, and the bundle's `public` is then made a
+   * junction to the real one: the same live reads as the symlink elsewhere.
+   */
+  const windows = process.platform === 'win32';
+  let publicDir = REMOTION_PUBLIC_DIR;
+  if (windows) {
+    publicDir = path.join(config.dataDir, 'remotion-public-empty');
+    await fsp.mkdir(publicDir, { recursive: true });
+  }
   const serveUrl = await bundle({
     entryPoint: ENTRY,
     onProgress: (percent) => onProgress(percent / 100),
     webpackOverride: (webpackConfig) => webpackConfig,
-    publicDir: REMOTION_PUBLIC_DIR,
+    publicDir,
     /*
      * The whole of PHASE 15 in one option. Symlinking rather than copying is
      * what makes the bundle read assets live, which is what decouples uploads
-     * from the bundle cache. Remotion falls back to copying on Windows; this
-     * deployment targets Linux, and on Windows the old copy semantics (and the
-     * old need to rebundle after an upload) return.
+     * from the bundle cache.
      */
     symlinkPublicDir: true,
   });
+  if (windows) {
+    const bundledPublic = path.join(serveUrl, 'public');
+    await fsp.rm(bundledPublic, { recursive: true, force: true });
+    await fsp.symlink(REMOTION_PUBLIC_DIR, bundledPublic, 'junction');
+  }
   bundleCache = { serveUrl, signature };
   return serveUrl;
 };

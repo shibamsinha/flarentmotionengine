@@ -266,7 +266,11 @@ export const ensureRemotionPublicDir = async () => {
     // `rm` rather than `unlink` so a stale real directory left by an older
     // build is replaced too, not just a stale link.
     await fsp.rm(link, { recursive: true, force: true });
-    if (fs.existsSync(target)) await fsp.symlink(target, link);
+    // A junction, not a plain symlink: Windows refuses directory symlinks to an
+    // ordinary account (EPERM without Developer Mode or admin) but allows
+    // junctions. Every target here is a directory, and Node ignores the type
+    // everywhere else.
+    if (fs.existsSync(target)) await fsp.symlink(target, link, 'junction');
   }
 
   return base;

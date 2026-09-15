@@ -75,7 +75,8 @@ export const resolveFfmpeg = () => {
 
   const bundledDir = path.join(
     ROOT, 'node_modules', '@remotion',
-    `compositor-${process.platform}-${process.arch}`,
+    // The Windows package carries a toolchain suffix: compositor-win32-x64-msvc.
+    `compositor-${process.platform}-${process.arch}${process.platform === 'win32' ? '-msvc' : ''}`,
   );
 
   const candidates = [

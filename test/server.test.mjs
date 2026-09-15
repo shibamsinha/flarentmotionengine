@@ -560,8 +560,23 @@ describe('job persistence across a restart', () => {
 
     const response = await post(first.base, '/api/render', { scenes: [scene({ duration: 3 })] });
     const { jobId } = await response.json();
-    // Let the snapshot debounce fire before pulling the plug.
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // Wait for the snapshot to reach disk before pulling the plug. Not a fixed
+    // sleep: render startup can hold the event loop past the 250ms debounce —
+    // over a second on a slower Windows machine — and a kill before the first
+    // write tests nothing but the machine's speed.
+    const jobsFile = path.join(first.dataDir, 'state', 'jobs.json');
+    const deadline = Date.now() + 20_000;
+    for (;;) {
+      let persisted = false;
+      try {
+        persisted = JSON.parse(fs.readFileSync(jobsFile, 'utf8')).jobs.some((job) => job.jobId === jobId);
+      } catch {
+        /* not written yet */
+      }
+      if (persisted) break;
+      assert.ok(Date.now() < deadline, 'the job table was never written');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 
     // SIGKILL: the harshest restart, and the one that used to lose everything.
     await stopServer(first);
